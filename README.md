@@ -2,6 +2,7 @@
 Meet Controla A+ — a web tool that checks product images &amp; A+ content for compliance before you hit upload. Fewer surprises. Cleaner listings. Faster go-live. Shipped Controla A+: React front end, automated checks, and CI/CD for fast iterations. Designed for reliability and scale.
 
 
+# website - https://aplus.controla.global/
 
 <img width="800" height="414" alt="image" src="https://github.com/user-attachments/assets/f01bc94f-f720-4fa9-91aa-18698e98d8a8" />
 
@@ -23,7 +24,7 @@ Key Highlights:
 
 
 
-Controla A+ Manager – Operations Overview
+ # Controla A+ Manager – Operations Overview
 
 Controla A+ Manager is a compliance and validation tool built to streamline Amazon A+ content management. Its operations revolve around automated checks, validation pipelines, and real-time reporting to ensure content and images meet Amazon’s strict publishing standards.
 
@@ -78,7 +79,7 @@ Reliability & Scale
 
 
 
-Controla A+ Manager – Database Description
+# Controla A+ Manager – Database Description
 
 The Controla A+ Manager database is designed to manage Amazon A+ content drafts, store configurations, and enable real-time validation workflows. It provides structured storage for tracking content drafts, their versions, and associated modules to ensure compliance and smooth publishing.
 
