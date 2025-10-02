@@ -1,0 +1,29 @@
+{
+  "files": {
+    "main.css": "/static/css/main.3de79fdc.css",
+    "main.js": "/static/js/main.5c302c50.js",
+    "static/js/453.218cf7dc.chunk.js": "/static/js/453.218cf7dc.chunk.js",
+    "static/media/Premium Simple Image Carousel module.png": "/static/media/Premium Simple Image Carousel module.48df5eb8bafbf1ef1c95.png",
+    "static/media/product-bubbles.png": "/static/media/product-bubbles.af4d2e1c414777dc3b01.png",
+    "static/media/product-moss.png": "/static/media/product-moss.db0b49960e36fc8da17b.png",
+    "static/media/premium-full-image-placeholder.png": "/static/media/premium-full-image-placeholder.8b094b59f09f5817d36d.png",
+    "static/media/Premium Regimen Carousel.png": "/static/media/Premium Regimen Carousel.ee19254cf85dda02a866.png",
+    "static/media/Standard Image Header With Text .png": "/static/media/Standard Image Header With Text .7c759ab989a063e61ab2.png",
+    "static/media/Standard Four Images & Text.png": "/static/media/Standard Four Images & Text.3e90e8097d0bb40ffb3a.png",
+    "static/media/image.png": "/static/media/image.abe6e33fef0ab01063c2.png",
+    "static/media/Standard Three Images & Text.png": "/static/media/Standard Three Images & Text.bcb5e83f88fd07aa603d.png",
+    "static/media/standard-comparisonchart.png": "/static/media/standard-comparisonchart.09a31ce20f1ab4f37c29.png",
+    "static/media/Premium Navigation Carousel.png": "/static/media/Premium Navigation Carousel.b25a0273e5171398ad6b.png",
+    "static/media/Standard Single Image & Sidebar.png": "/static/media/Standard Single Image & Sidebar.1692f5591f43c5c278e1.png",
+    "static/media/Standard Single Left Image.png": "/static/media/Standard Single Left Image.74adaa8359cf35ff7b8d.png",
+    "static/media/controla-logo.png": "/static/media/controla-logo.9f01b11468440ad6afcd.png",
+    "index.html": "/index.html",
+    "main.3de79fdc.css.map": "/static/css/main.3de79fdc.css.map",
+    "main.5c302c50.js.map": "/static/js/main.5c302c50.js.map",
+    "453.218cf7dc.chunk.js.map": "/static/js/453.218cf7dc.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.3de79fdc.css",
+    "static/js/main.5c302c50.js"
+  ]
+}
