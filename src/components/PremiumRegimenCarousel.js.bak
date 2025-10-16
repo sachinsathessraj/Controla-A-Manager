@@ -1,0 +1,394 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { 
+  FaChevronLeft, 
+  FaChevronRight, 
+  FaGripVertical, 
+  FaPlus, 
+  FaTrash, 
+  FaImage,
+  FaBold,
+  FaItalic,
+  FaListUl,
+  FaListOl
+} from 'react-icons/fa';
+import '../css/PremiumRegimenCarousel.css';
+
+const PremiumRegimenCarousel = ({ data = {}, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) => {
+  // Initialize with default data if none provided
+  const [carouselData, setCarouselData] = useState(() => {
+    if (data && data.headline && data.panels) {
+      return data;
+    }
+    return {
+      headline: 'Choose the Right Dog for Your Family',
+      panels: Array(3).fill().map((_, index) => ({
+        id: uuidv4(),
+        title: `Step ${index + 1}`,
+        description: `Description for step ${index + 1}. Customize this text to guide your users.`,
+        image: '',
+        navigationText: `Step ${index + 1}`
+      }))
+    };
+  });
+
+  const [activePanelIndex, setActivePanelIndex] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [draggedItem, setDraggedItem] = useState(null);
+  const descriptionRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Notify parent component of changes
+  useEffect(() => {
+    if (onChange) {
+      onChange(carouselData);
+    }
+  }, [carouselData, onChange]);
+
+  const goToPanel = (index) => {
+    setActivePanelIndex(index);
+  };
+
+  const goToPrev = () => {
+    setActivePanelIndex(prev => (prev > 0 ? prev - 1 : carouselData.panels.length - 1));
+  };
+
+  const goToNext = () => {
+    setActivePanelIndex(prev => (prev < carouselData.panels.length - 1 ? prev + 1 : 0));
+  };
+
+  // Handle panel updates
+  const handlePanelChange = (index, field, value) => {
+    const updatedPanels = [...carouselData.panels];
+    updatedPanels[index] = { ...updatedPanels[index], [field]: value };
+    setCarouselData({ ...carouselData, panels: updatedPanels });
+  };
+
+  // Add new panel
+  const addPanel = () => {
+    if (carouselData.panels.length >= 5) return;
+    
+    const newPanel = {
+      id: uuidv4(),
+      title: `Step ${carouselData.panels.length + 1}`,
+      description: `Description for step ${carouselData.panels.length + 1}. Customize this text.`,
+      image: '',
+      navigationText: `Step ${carouselData.panels.length + 1}`
+    };
+    
+    setCarouselData({
+      ...carouselData,
+      panels: [...carouselData.panels, newPanel]
+    });
+    
+    setActivePanelIndex(carouselData.panels.length);
+  };
+
+  // Remove panel
+  const removePanel = (index) => {
+    if (carouselData.panels.length <= 2) return;
+    
+    const updatedPanels = carouselData.panels.filter((_, i) => i !== index);
+    setCarouselData({
+      ...carouselData,
+      panels: updatedPanels
+    });
+    
+    if (activePanelIndex >= updatedPanels.length) {
+      setActivePanelIndex(updatedPanels.length - 1);
+    }
+  };
+
+  // Handle drag and drop
+  const handleDragStart = (e, index) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index);
+    setIsDragging(true);
+    setDraggedItem(index);
+    setTimeout(() => {
+      e.target.classList.add('dragging');
+    }, 0);
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    
+    if (dragIndex === dropIndex) {
+      setDragOverIndex(null);
+      return;
+    }
+    
+    const updatedPanels = [...carouselData.panels];
+    const [movedItem] = updatedPanels.splice(dragIndex, 1);
+    updatedPanels.splice(dropIndex, 0, movedItem);
+    
+    setCarouselData({
+      ...carouselData,
+      panels: updatedPanels
+    });
+    
+    if (activePanelIndex === dragIndex) {
+      setActivePanelIndex(dropIndex);
+    } else if (activePanelIndex === dropIndex) {
+      setActivePanelIndex(dragIndex);
+    }
+    
+    setDragOverIndex(null);
+  };
+
+  // Handle image upload
+  const handleImageUpload = (e, index) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      handlePanelChange(index, 'image', event.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Rich text formatting
+  const formatText = (command, value = null) => {
+    document.execCommand(command, false, value);
+    descriptionRef.current.focus();
+  };
+
+  const handleDescriptionChange = (e) => {
+    const newDescription = e.target.innerHTML;
+    handlePanelChange(activePanelIndex, 'description', newDescription);
+  };
+
+  const activePanel = carouselData.panels[activePanelIndex] || {};
+
+  return (
+    <div className="premium-regimen-carousel">
+      {/* Editor Header */}
+      <div className="module-header">
+        <div className="module-title">
+          <span>Premium Regimen Carousel</span>
+        </div>
+        <div className="module-actions">
+          {onMoveUp && (
+            <button className="btn-action" onClick={onMoveUp} disabled={moduleIndex === 0}>
+              <FaChevronLeft /> Move Up
+            </button>
+          )}
+          {onMoveDown && (
+            <button className="btn-action" onClick={onMoveDown} disabled={moduleIndex === modulesLength - 1}>
+              <FaChevronRight /> Move Down
+            </button>
+          )}
+          <div className="divider"></div>
+          <button className="btn-action btn-delete" onClick={onDelete}>
+            <FaTrash /> Delete
+          </button>
+        </div>
+      </div>
+
+      <div className="regimen-content">
+        <div className="regimen-editor">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3>Edit Carousel</h3>
+            <div>
+              {onMoveUp && moduleIndex > 0 && (
+                <button className="btn btn-outline" onClick={onMoveUp} style={{ marginRight: '10px' }}>
+                  Move Up
+                </button>
+              )}
+              {onMoveDown && moduleIndex < modulesLength - 1 && (
+                <button className="btn btn-outline" onClick={onMoveDown} style={{ marginRight: '10px' }}>
+                  Move Down
+                </button>
+              )}
+              <button className="btn btn-outline" onClick={onDelete}>
+                <FaTrash />
+              </button>
+            </div>
+          </div>
+            
+            <div className="form-group">
+              <label htmlFor="carousel-headline">Headline</label>
+              <input
+                id="carousel-headline"
+                type="text"
+                className="form-control"
+                value={carouselData.headline}
+                onChange={(e) => setCarouselData({ ...carouselData, headline: e.target.value })}
+                placeholder="Enter carousel headline"
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Active Panel: {activePanel.title || `Step ${activePanelIndex + 1}`}</label>
+              
+              <div className="form-group">
+                <label>Panel Title</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={activePanel.title || ''}
+                  onChange={(e) => handlePanelChange(activePanelIndex, 'title', e.target.value)}
+                  placeholder="Enter panel title"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Description</label>
+                <div className="rich-text-editor">
+                  <div className="toolbar">
+                    <button type="button" onClick={() => formatText('bold')}><FaBold /></button>
+                    <button type="button" onClick={() => formatText('italic')}><FaItalic /></button>
+                    <button type="button" onClick={() => formatText('insertUnorderedList')}><FaListUl /></button>
+                    <button type="button" onClick={() => formatText('insertOrderedList')}><FaListOl /></button>
+                  </div>
+                  <div
+                    ref={descriptionRef}
+                    className="form-control rich-text-content"
+                    contentEditable
+                    onInput={handleDescriptionChange}
+                    dangerouslySetInnerHTML={{ __html: activePanel.description || '' }}
+                  />
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label>Navigation Text</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={activePanel.navigationText || ''}
+                  onChange={(e) => handlePanelChange(activePanelIndex, 'navigationText', e.target.value)}
+                  placeholder="Enter navigation text"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Image</label>
+                <div style={{ marginBottom: '10px' }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, activePanelIndex)}
+                    style={{ display: 'none' }}
+                    id={`image-upload-${activePanelIndex}`}
+                  />
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => document.getElementById(`image-upload-${activePanelIndex}`).click()}
+                  >
+                    {activePanel.image ? 'Change Image' : 'Upload Image'}
+                  </button>
+                  {activePanel.image && (
+                    <button
+                      className="btn btn-link"
+                      onClick={() => handlePanelChange(activePanelIndex, 'image', '')}
+                      style={{ marginLeft: '10px' }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {carouselData.panels.length > 2 && (
+                <div className="form-group" style={{ textAlign: 'right' }}>
+                  <button 
+                    className="btn btn-outline" 
+                    onClick={() => removePanel(activePanelIndex)}
+                    style={{ color: '#ef4444', borderColor: '#ef4444' }}
+                  >
+                    <FaTrash style={{ marginRight: '5px' }} /> Remove Panel
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            <div className="panel-list">
+              <h4>Panels ({carouselData.panels.length}/5)</h4>
+              {carouselData.panels.length === 0 ? (
+                <div className="empty-state">
+                  <p>No panels added yet</p>
+                  <button className="btn btn-primary" onClick={addPanel}>
+                    <FaPlus style={{ marginRight: '5px' }} /> Add First Panel
+                  </button>
+                </div>
+              ) : (
+                <ul style={{ padding: 0, listStyle: 'none' }}>
+                  {carouselData.panels.map((panel, index) => (
+                    <li 
+                      key={panel.id}
+                      className={`panel-item ${dragOverIndex === index ? 'drag-over' : ''} ${activePanelIndex === index ? 'active' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDrop={(e) => handleDrop(e, index)}
+                      onDragEnd={() => {
+                        setIsDragging(false);
+                        setDragOverIndex(null);
+                      }}
+                      onClick={() => setActivePanelIndex(index)}
+                      style={{
+                        opacity: draggedItem === index && isDragging ? 0.5 : 1,
+                        borderColor: activePanelIndex === index ? '#3b82f6' : '#e5e7eb',
+                        boxShadow: activePanelIndex === index ? '0 0 0 1px #3b82f6' : 'none',
+                        marginBottom: '8px',
+                        transition: 'all 0.2s',
+                        backgroundColor: dragOverIndex === index ? '#f0f7ff' : 'white',
+                        cursor: 'pointer',
+                        padding: '10px',
+                        borderRadius: '4px',
+                        border: '1px solid #e5e7eb'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <div style={{ marginRight: '10px', color: '#9ca3af' }}>
+                          <FaGripVertical />
+                        </div>
+                        <div style={{ flexGrow: 1 }}>
+                          <h4 style={{ margin: 0, fontSize: '14px' }}>{panel.title || `Step ${index + 1}`}</h4>
+                          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '12px' }}>
+                            {panel.navigationText || `Step ${index + 1}`}
+                          </p>
+                        </div>
+                        <button 
+                          className="btn btn-outline" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removePanel(index);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '12px' }}
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              
+              {carouselData.panels.length > 0 && carouselData.panels.length < 5 && (
+                <button 
+                  className="btn btn-outline"
+                  onClick={addPanel}
+                  style={{ width: '100%', marginTop: '10px' }}
+                >
+                  <FaPlus style={{ marginRight: '5px' }} /> Add Another Panel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PremiumRegimenCarousel;

@@ -1,0 +1,3637 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import '../css/PremiumNavigationCarousel.css';
+import { useNavigate, useParams } from 'react-router-dom';
+import acmDB from './db';
+import controlaLogo from '../images/controla-logo.png';
+import premiumFullImagePlaceholder from '../images/premium-full-image-placeholder.png';
+import premiumRegimenCarouselThumbnail from '../images/Premium Regimen Carousel.png';
+import premiumNavigationCarouselThumbnail from '../images/Premium Navigation Carousel.png';
+import premiumSimpleImageCarouselThumbnail from '../images/Premium Simple Image Carousel module.png';
+import ManageDraftsModal from '../components/ManageDraftsModal';
+import standardSingleLeftImage from '../images/Standard Single Left Image.png';
+import standardThreeImagesText from '../images/Standard Three Images & Text.png';
+import standardFourImagesText from '../images/Standard Four Images & Text.png';
+import standardImageHeaderWithText from '../images/Standard Image Header With Text .png';
+import standardSingleImageSidebar from '../images/Standard Single Image & Sidebar.png';
+import standardComparisonChart from '../images/standard-comparisonchart.png';
+import backgroundImageTemplate from '../images/image.png';
+import { saveDraftToSupabase, getDraftsFromSupabase, deleteDraftFromSupabase } from './supabaseDrafts';
+import { uploadImageToSupabase } from './supabaseStorage';
+import PremiumThreeImagesTextModule from './PremiumThreeImagesTextModule';
+import { supabase } from '../supabaseClient';
+import PremiumBackgroundImageModule from '../components/PremiumBackgroundImageModule';
+import PremiumBackgroundImagePreview from '../components/PremiumBackgroundImagePreview';
+import PremiumRegimenCarousel from '../components/PremiumRegimenCarousel';
+import PremiumSimpleImageCarousel from '../components/PremiumSimpleImageCarousel';
+import PremiumSimpleImageCarouselPreview from '../components/PremiumSimpleImageCarouselPreview';
+import PremiumRegimenCarouselView from '../components/PremiumRegimenCarouselPreview';
+
+// Premium module templates
+export const PREMIUM_MODULE_TEMPLATES = [
+  {
+    id: 'premium-simple-image-carousel',
+    title: 'Premium Simple Image Carousel',
+    description: 'A clean and simple image carousel with thumbnail navigation',
+    img: premiumSimpleImageCarouselThumbnail,
+    defaultData: {
+      id: `premium-simple-image-carousel-${Date.now()}`,
+      type: 'premium-simple-image-carousel',
+      panels: Array(3).fill().map((_, i) => ({
+        id: uuidv4(),
+        image: '',
+        altText: `Slide ${i + 1}`,
+        headline: `Slide ${i + 1} Headline`,
+        body: `Add your slide ${i + 1} content here`,
+        ctaText: 'Learn More',
+        ctaUrl: '#'
+      }))
+    }
+  },
+  {
+    id: 'premium-navigation-carousel',
+    title: 'Premium Navigation Carousel',
+    description: 'A carousel with navigation tabs and rich content',
+    img: premiumNavigationCarouselThumbnail,
+    defaultData: {
+      id: `premium-navigation-carousel-${Date.now()}`,
+      type: 'premium-navigation-carousel',
+      panels: Array(3).fill().map((_, i) => ({
+        id: uuidv4(),
+        navigationText: `Tab ${i + 1}`,
+        image: '',
+        subHeadline: `Subheadline ${i + 1}`,
+        headline: `Headline ${i + 1}`,
+        body: `<p>Content for tab ${i + 1} goes here</p>`,
+        buttonText: 'Learn More',
+        buttonUrl: '#',
+        showCaption: true
+      }))
+    }
+  }
+];
+
+// Import the preview components
+import PremiumNavigationCarouselPreview from '../components/PremiumNavigationCarouselPreview';
+import '../css/PremiumSimpleImageCarousel.css';
+
+// Premium Full Image Module component
+function PremiumFullImageModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [imgError, setImgError] = useState('');
+  const [imgType, setImgType] = useState('desktop');
+  const [pendingImgFile, setPendingImgFile] = useState(null);
+  const [desktopImageUrl, setDesktopImageUrl] = useState('');
+  const [mobileImageUrl, setMobileImageUrl] = useState('');
+  const [showImgModal, setShowImgModal] = useState(false);
+  const [pendingImg, setPendingImg] = useState(null);
+  const [pendingImgDims, setPendingImgDims] = useState({ width: 0, height: 0 });
+  const [isDesktopHovered, setIsDesktopHovered] = useState(false);
+  const [isMobileHovered, setIsMobileHovered] = useState(false);
+  const [imgQueue, setImgQueue] = useState([]);
+  const [isDesktopDragActive, setIsDesktopDragActive] = useState(false);
+  const [isMobileDragActive, setIsMobileDragActive] = useState(false);
+  const [desktopOnTop, setDesktopOnTop] = useState(true);
+
+  // Add useEffect to sync local mobileImg state with data.mobileImage prop changes
+  useEffect(() => {
+    // setMobileImg(data.mobileImage || ''); // Removed
+  }, [data.mobileImage]);
+
+  useEffect(() => {
+    async function loadDesktopImage() {
+      try {
+        if (data.desktopImage) {
+          if (data.desktopImage.startsWith('data:') || data.desktopImage.startsWith('http')) {
+            setDesktopImageUrl(data.desktopImage);
+          } else {
+            const img = await acmDB.getImage(data.desktopImage);
+            setDesktopImageUrl(img || '');
+          }
+        } else {
+          setDesktopImageUrl('');
+        }
+      } catch (error) {
+        console.error('Error loading desktop image:', error);
+        setDesktopImageUrl('');
+      }
+    }
+    loadDesktopImage();
+  }, [data.desktopImage]);
+
+  useEffect(() => {
+    async function loadMobileImage() {
+      try {
+        if (data.mobileImage) {
+          if (data.mobileImage.startsWith('data:') || data.mobileImage.startsWith('http')) {
+            setMobileImageUrl(data.mobileImage);
+          } else {
+            const img = await acmDB.getImage(data.mobileImage);
+            setMobileImageUrl(img || '');
+          }
+        } else {
+          setMobileImageUrl('');
+        }
+      } catch (error) {
+        console.error('Error loading mobile image:', error);
+        setMobileImageUrl('');
+      }
+    }
+    loadMobileImage();
+  }, [data.mobileImage]);
+
+  async function handleDesktopImgChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const img = new Image();
+        img.onload = async () => {
+          // Validate image dimensions
+          if (img.width !== 1464 || img.height !== 600) {
+            setImgError('Desktop image must be exactly 1464 x 600 px.');
+            return;
+          }
+          
+          try {
+            const imageUrl = await uploadImageToSupabase(
+              file, 
+              `premium/full-image/desktop/${Date.now()}_${file.name}`, 
+              'premium'
+            );
+            onChange({ ...data, desktopImage: imageUrl });
+            setDesktopImageUrl(URL.createObjectURL(file)); // Update local state immediately
+          } catch (error) {
+            console.error('Error uploading desktop image:', error);
+            setImgError('Failed to upload image. Please try again.');
+          } finally {
+            setIsUploading(false);
+          }
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error handling desktop image:', error);
+      setImgError('Error processing image. Please try again.');
+      setIsUploading(false);
+    }
+  }
+
+  async function handleMobileImgChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const img = new Image();
+        img.onload = async () => {
+          // Validate image dimensions
+          if (img.width !== 600 || img.height !== 450) {
+            setImgError('Mobile image must be exactly 600 x 450 px.');
+            return;
+          }
+          
+          try {
+            const imageUrl = await uploadImageToSupabase(
+              file, 
+              `premium/full-image/mobile/${Date.now()}_${file.name}`, 
+              'premium'
+            );
+            onChange({ ...data, mobileImage: imageUrl });
+            setMobileImageUrl(URL.createObjectURL(file)); // Update local state immediately
+          } catch (error) {
+            console.error('Error uploading mobile image:', error);
+            setImgError('Failed to upload image. Please try again.');
+          } finally {
+            setIsUploading(false);
+          }
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error handling mobile image:', error);
+      setImgError('Error processing image. Please try again.');
+      setIsUploading(false);
+    }
+  }
+
+  const handleImgModalCancel = () => {
+    setPendingImgFile(null);
+    setImgType('desktop');
+    setIsDesktopDragActive(false);
+    setIsMobileDragActive(false);
+  };
+
+  const handleImgModalRemove = () => {
+    if (imgType === 'desktop') {
+      onChange({ ...data, desktopImage: '' });
+      setDesktopImageUrl('');
+      setIsDesktopDragActive(false);
+    } else {
+      onChange({ ...data, mobileImage: '' });
+      setMobileImageUrl('');
+      setIsMobileDragActive(false);
+    }
+    setPendingImgFile(null);
+  };
+
+  async function handleImgModalAdd() {
+    if (!pendingImgFile) return;
+    
+    try {
+      setIsUploading(true);
+      const path = `premium/full-image/${imgType === 'desktop' ? 'desktop' : 'mobile'}/${Date.now()}_${pendingImgFile.name}`;
+      const imageUrl = await uploadImageToSupabase(pendingImgFile, path, 'premium');
+      
+      if (!imageUrl) {
+        throw new Error('Failed to get image URL after upload');
+      }
+      
+      // Create a preview URL for immediate feedback
+      const previewUrl = URL.createObjectURL(pendingImgFile);
+      
+      if (imgType === 'desktop') {
+        setDesktopImageUrl(previewUrl);
+        onChange({ ...data, desktopImage: imageUrl });
+        setIsDesktopDragActive(false);
+      } else {
+        setMobileImageUrl(previewUrl);
+        onChange({ ...data, mobileImage: imageUrl });
+        setIsMobileDragActive(false);
+      }
+      
+      setShowImgModal(false);
+      setPendingImg(null);
+      setPendingImgFile(null);
+      setPendingImgDims({ width: 0, height: 0 });
+      setImgError('');
+      
+      // Process next in queue if any
+      setImgQueue(q => {
+        const newQueue = [...q];
+        newQueue.shift();
+        return newQueue;
+      });
+    } catch (error) {
+      console.error('Error in handleImgModalAdd:', error);
+      setImgError(error.message || 'Failed to upload image. Please try again.');
+      setImgQueue(q => q.slice(1)); // Remove the failed item from queue
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+
+  function handleDownload() {
+    if (pendingImg && pendingImgFile) {
+      const link = document.createElement('a');
+      link.href = pendingImg;
+      link.download = pendingImgFile.name;
+      link.click();
+    }
+  }
+
+  function handleDesktopDrop(e) {
+    e.preventDefault();
+    setIsDesktopDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setImgQueue(q => [...q, ...Array.from(e.dataTransfer.files).map(f => ({ file: f, type: 'desktop' }))]);
+    }
+  }
+  function handleDesktopDragOver(e) { e.preventDefault(); setIsDesktopDragActive(true); }
+  function handleDesktopDragLeave(e) { e.preventDefault(); setIsDesktopDragActive(false); }
+
+  function handleMobileDrop(e) {
+    e.preventDefault();
+    setIsMobileDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setImgQueue(q => [...q, ...Array.from(e.dataTransfer.files).map(f => ({ file: f, type: 'mobile' }))]);
+    }
+  }
+  function handleMobileDragOver(e) { e.preventDefault(); setIsMobileDragActive(true); }
+  function handleMobileDragLeave(e) { e.preventDefault(); setIsMobileDragActive(false); }
+
+  useEffect(() => {
+    if (!showImgModal && imgQueue.length > 0) {
+      const { file, type } = imgQueue[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new window.Image();
+        img.onload = () => {
+          // Validate image size
+          if ((type === 'desktop' && (img.width !== 1464 || img.height !== 600)) ||
+              (type === 'mobile' && (img.width !== 600 || img.height !== 450))) {
+            setImgError(type === 'desktop'
+              ? 'Desktop image must be exactly 1464 x 600 px.'
+              : 'Mobile image must be exactly 600 x 450 px.');
+            setImgQueue(q => q.slice(1));
+            return;
+          }
+          setPendingImg(ev.target.result);
+          setPendingImgFile(file);
+          setPendingImgDims({ width: img.width, height: img.height });
+          setImgType(type);
+          setShowImgModal(true);
+          setImgError('');
+        };
+        img.onerror = () => setImgError('Invalid image file.');
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }, [imgQueue, showImgModal]);
+
+  useEffect(() => {
+    if (imgError) {
+      const timer = setTimeout(() => setImgError(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [imgError]);
+
+  // Generate unique input IDs using the module's id
+  const desktopInputId = `desktop-image-input-${data.id}`;
+  const mobileInputId = `mobile-image-input-${data.id}`;
+
+  return (
+    <div style={{
+      background: '#fff',
+      borderRadius: 18,
+      padding: '32px 32px 24px 32px',
+      marginBottom: 36,
+      maxWidth: 700,
+      width: '100%',
+      position: 'relative',
+      border: '1.5px solid #e0e7ef',
+    }}>
+      {showImgModal && (
+        <div className="acm-modal-overlay">
+          <div className="acm-modal acm-img-modal" style={{ minWidth: 900, maxWidth: 1200 }}>
+            <div className="acm-modal-header">Asset library : Image details
+              <button className="acm-modal-close" onClick={handleImgModalCancel}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 32 }}>
+              <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ background: '#eee', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  {pendingImg && <img src={pendingImg} alt="Preview" style={{ maxWidth: 500, maxHeight: 350, borderRadius: 8 }} />}
+                </div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>{pendingImgFile?.name}</div>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div><b>Size</b><br />{pendingImgFile ? (pendingImgFile.size / 1024).toFixed(2) + ' KB' : ''}</div>
+                <div><b>Dimensions</b><br />{pendingImgDims.width} x {pendingImgDims.height}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              <button className="acm-btn-cancel" onClick={handleImgModalCancel}>Back</button>
+              <button className="acm-btn-remove" onClick={handleImgModalRemove}>Delete</button>
+              <button className="acm-btn-save" onClick={handleImgModalAdd}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+        <div style={{ fontWeight: 700, fontSize: 22, color: '#23272f', letterSpacing: 0.2 }}>Premium Full Image</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            className="acm-module-move"
+            title="Move Up"
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveUp ? 'pointer' : 'not-allowed' }}
+          >
+            &uarr;
+          </button>
+          <button
+            className="acm-module-move"
+            title="Move Down"
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveDown ? 'pointer' : 'not-allowed' }}
+          >
+            &darr;
+          </button>
+          <button className="acm-module-delete" onClick={onDelete} title="Delete" style={{ fontSize: '1.3rem', color: '#b12704', background: 'none', border: 'none', marginLeft: 8, cursor: 'pointer' }}>×</button>
+        </div>
+      </div>
+      <div className="acm-form-row" style={{marginBottom: 18}}>
+        <label style={{fontWeight:600,marginBottom:6,display:'block'}}>* Images</label>
+        <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center', flexDirection: 'row' }}>
+          {desktopOnTop ? (
+            <>
+              {/* Desktop Upload Area */}
+          <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 320 }}>
+                <div
+                  style={{ border: isDesktopDragActive ? '2.5px solid #2563eb' : '2.5px dashed #38bdf8', borderRadius: 12, background: '#f0faff', width: 400, height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, transition: 'border 0.2s', position: 'relative' }}
+                  onDrop={handleDesktopDrop}
+                  onDragOver={handleDesktopDragOver}
+                  onDragLeave={handleDesktopDragLeave}
+                  onDragEnd={handleDesktopDragLeave}
+                  onMouseEnter={() => setIsDesktopHovered(true)}
+                  onMouseLeave={() => setIsDesktopHovered(false)}
+                >
+                  {desktopImageUrl ? (
+                    <>
+                      <img src={desktopImageUrl} alt="Desktop" style={{ maxWidth: 390, maxHeight: 170, borderRadius: 10 }} />
+                      <button
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          background: isDesktopHovered ? 'rgba(37,99,235,0.28)' : 'transparent',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          fontSize: '1.1rem',
+                          cursor: 'pointer',
+                          opacity: isDesktopHovered ? 1 : 0,
+                          transition: 'opacity 0.2s, background 0.2s',
+                          zIndex: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          pointerEvents: isDesktopHovered ? 'auto' : 'none',
+                        }}
+                        onClick={() => {
+                          document.getElementById(desktopInputId).click();
+                        }}
+                      >
+                        Replace
+                      </button>
+                      <input
+                        id={desktopInputId}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleDesktopImgChange}
+                      />
+                    </>
+              ) : (
+                <label 
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: '#38bdf8', 
+                    textAlign: 'center', 
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div style={{fontWeight: 600, marginBottom: 8}}>Desktop</div>
+                  <div style={{fontSize: 15, marginBottom: 8, color: '#64748b'}}>1464 x 600 px</div>
+                  <div style={{
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    padding: '8px 16px',
+                    borderRadius: 6,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    marginTop: 8
+                  }}>
+                    Click to add image
+                  </div>
+                  <input 
+                    id={desktopInputId}
+                    type="file" 
+                    accept="image/*" 
+                    style={{ display: 'none' }} 
+                    onChange={handleDesktopImgChange} 
+                  />
+                </label>
+              )}
+            </div>
+                {/* In the Desktop upload area, remove the up/down arrow buttons entirely. */}
+                {/* In the Mobile upload area, keep the up/down arrow buttons for moving the module (already implemented). */}
+              </div>
+              {/* Mobile Upload Area */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 180 }}>
+                <div
+                  style={{ border: isMobileDragActive ? '2.5px solid #2563eb' : '2.5px dashed #38bdf8', borderRadius: 12, background: '#f0faff', width: 180, height: 135, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, transition: 'border 0.2s', position: 'relative' }}
+                  onDrop={handleMobileDrop}
+                  onDragOver={handleMobileDragOver}
+                  onDragLeave={handleMobileDragLeave}
+                  onDragEnd={handleMobileDragLeave}
+                  onMouseEnter={() => setIsMobileHovered(true)}
+                  onMouseLeave={() => setIsMobileHovered(false)}
+                >
+                  {mobileImageUrl ? (
+                    <>
+                      <img src={mobileImageUrl} alt="Mobile" style={{ maxWidth: 170, maxHeight: 125, borderRadius: 10 }} />
+                      <button
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          background: isMobileHovered ? 'rgba(37,99,235,0.28)' : 'transparent',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          fontSize: '1.1rem',
+                          cursor: 'pointer',
+                          opacity: isMobileHovered ? 1 : 0,
+                          transition: 'opacity 0.2s, background 0.2s',
+                          zIndex: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          pointerEvents: isMobileHovered ? 'auto' : 'none',
+                        }}
+                        onClick={() => {
+                          document.getElementById(mobileInputId).click();
+                        }}
+                      >
+                        Replace
+                      </button>
+                      <input
+                        id={mobileInputId}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleMobileImgChange}
+                      />
+                    </>
+                  ) : (
+                    <label style={{ cursor: 'pointer', color: '#38bdf8', textAlign: 'center', width: '100%', display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%' }}>
+                      <div style={{fontWeight:600}}>Mobile</div>
+                      <div style={{fontSize:15,margin:'4px 0'}}>600 x 450 px</div>
+                      <div style={{fontSize:14}}>Click to add image</div>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleMobileImgChange} />
+                    </label>
+                  )}
+                </div>
+                {/* In the Mobile Upload Area, remove the down arrow button completely. Only keep the upload UI and label for the mobile image. */}
+                {/* In the uploaders container, always render desktop first if desktopOnTop is true, otherwise render mobile first. */}
+                {/* The down arrow is only enabled if mobile is not already at the bottom. */}
+          </div>
+            </>
+          ) : (
+            <>
+              {/* Mobile Upload Area */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 180 }}>
+                <div
+                  style={{ border: isMobileDragActive ? '2.5px solid #2563eb' : '2.5px dashed #38bdf8', borderRadius: 12, background: '#f0faff', width: 180, height: 135, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, transition: 'border 0.2s', position: 'relative' }}
+                  onDrop={handleMobileDrop}
+                  onDragOver={handleMobileDragOver}
+                  onDragLeave={handleMobileDragLeave}
+                  onDragEnd={handleMobileDragLeave}
+                  onMouseEnter={() => setIsMobileHovered(true)}
+                  onMouseLeave={() => setIsMobileHovered(false)}
+                >
+                  {mobileImageUrl ? (
+                    <>
+                      <img src={mobileImageUrl} alt="Mobile" style={{ maxWidth: 170, maxHeight: 125, borderRadius: 10 }} />
+                      <button
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          background: isMobileHovered ? 'rgba(37,99,235,0.28)' : 'transparent',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          fontSize: '1.1rem',
+                          cursor: 'pointer',
+                          opacity: isMobileHovered ? 1 : 0,
+                          transition: 'opacity 0.2s, background 0.2s',
+                          zIndex: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          pointerEvents: isMobileHovered ? 'auto' : 'none',
+                        }}
+                        onClick={() => {
+                          document.getElementById(mobileInputId).click();
+                        }}
+                      >
+                        Replace
+                      </button>
+                      <input
+                        id={mobileInputId}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleMobileImgChange}
+                      />
+                    </>
+              ) : (
+                <label 
+                  style={{ 
+                    cursor: 'pointer', 
+                    color: '#38bdf8', 
+                    textAlign: 'center', 
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '15px',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <div style={{fontWeight: 600, marginBottom: 8}}>Mobile</div>
+                  <div style={{fontSize: 15, marginBottom: 8, color: '#64748b'}}>600 x 450 px</div>
+                  <div style={{
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    padding: '8px 16px',
+                    borderRadius: 6,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    marginTop: 8
+                  }}>
+                    Click to add image
+                  </div>
+                  <input 
+                    id={mobileInputId}
+                    type="file" 
+                    accept="image/*" 
+                    style={{ display: 'none' }} 
+                    onChange={handleMobileImgChange} 
+                  />
+                </label>
+              )}
+            </div>
+                {/* In the Desktop upload area, remove the up/down arrow buttons entirely. */}
+                {/* In the Mobile upload area, keep the up/down arrow buttons for moving the module (already implemented). */}
+              </div>
+              {/* Desktop Upload Area */}
+              <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 320 }}>
+                <div
+                  style={{ border: isDesktopDragActive ? '2.5px solid #2563eb' : '2.5px dashed #38bdf8', borderRadius: 12, background: '#f0faff', width: 400, height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, transition: 'border 0.2s', position: 'relative' }}
+                  onDrop={handleDesktopDrop}
+                  onDragOver={handleDesktopDragOver}
+                  onDragLeave={handleDesktopDragLeave}
+                  onDragEnd={handleDesktopDragLeave}
+                  onMouseEnter={() => setIsDesktopHovered(true)}
+                  onMouseLeave={() => setIsDesktopHovered(false)}
+                >
+                  {desktopImageUrl ? (
+                    <>
+                      <img src={desktopImageUrl} alt="Desktop" style={{ maxWidth: 390, maxHeight: 170, borderRadius: 10 }} />
+                      <button
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          background: isDesktopHovered ? 'rgba(37,99,235,0.28)' : 'transparent',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 10,
+                          fontWeight: 700,
+                          fontSize: '1.1rem',
+                          cursor: 'pointer',
+                          opacity: isDesktopHovered ? 1 : 0,
+                          transition: 'opacity 0.2s, background 0.2s',
+                          zIndex: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          pointerEvents: isDesktopHovered ? 'auto' : 'none',
+                        }}
+                        onClick={() => {
+                          document.getElementById(desktopInputId).click();
+                        }}
+                      >
+                        Replace
+                      </button>
+                      <input
+                        id={desktopInputId}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={handleDesktopImgChange}
+                      />
+                    </>
+                  ) : (
+                    <label style={{ cursor: 'pointer', color: '#38bdf8', textAlign: 'center', width: '100%', display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%' }}>
+                      <div style={{fontWeight:600}}>Desktop</div>
+                      <div style={{fontSize:15,margin:'4px 0'}}>1464 x 600 px</div>
+                      <div style={{fontSize:14}}>Click to add image</div>
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleDesktopImgChange} />
+                    </label>
+                  )}
+                </div>
+                {/* In the Desktop upload area, remove the up/down arrow buttons entirely. */}
+                {/* In the Mobile upload area, keep the up/down arrow buttons for moving the module (already implemented). */}
+          </div>
+            </>
+          )}
+        </div>
+        {imgError && (
+          <div style={{
+            position: 'fixed',
+            top: 80,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#f87171',
+            color: '#fff',
+            padding: '14px 36px',
+            borderRadius: 12,
+            fontWeight: 700,
+            fontSize: 18,
+            zIndex: 2000,
+            boxShadow: '0 4px 24px rgba(239,68,68,0.13)',
+            textAlign: 'center',
+            minWidth: 240
+          }}>
+            {imgError}
+          </div>
+        )}
+      </div>
+      {/* Remove the preview area (the <div> with the large image below the uploaders) */}
+      {/* Only keep the upload areas and their controls */}
+    </div>
+  );
+}
+
+// Add this component for the four images & text module
+function PremiumFourImagesTextModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength, setPreviewImageUrls }) {
+  const [imgErrors, setImgErrors] = useState([ '', '', '', '' ]);
+  const [imgUrls, setImgUrls] = useState([ '', '', '', '' ]);
+  const [dragActive, setDragActive] = useState([false, false, false, false]);
+  // Modal state for image details
+  const [showImgModal, setShowImgModal] = useState(false);
+  const [pendingImg, setPendingImg] = useState(null);
+  const [pendingImgFile, setPendingImgFile] = useState(null);
+  const [pendingImgDims, setPendingImgDims] = useState({ width: 0, height: 0 });
+  const [pendingIdx, setPendingIdx] = useState(null);
+
+  // Load images from IndexedDB if needed
+  useEffect(() => {
+    (async () => {
+      const urls = Array(4).fill('');
+      if (data.images && Array.isArray(data.images)) {
+        const loadedUrls = await Promise.all(
+          data.images.map(async (imgId, idx) => {
+            if (!imgId) return '';
+            if (imgId.startsWith('data:') || imgId.startsWith('http')) {
+              return imgId;
+            }
+            try {
+              const url = await acmDB.getImage(imgId);
+              return url || '';
+            } catch (error) {
+              console.error('Error loading image:', error);
+              return '';
+            }
+          })
+        );
+        loadedUrls.forEach((url, idx) => {
+          if (url) urls[idx] = url;
+        });
+      }
+      setImgUrls(urls);
+    })();
+  }, [data.images]);
+
+  async function handleImageChange(idx, file) {
+    if (!file) return;
+    
+    // Clear any previous error and initialize error state
+    const newErrors = ['', '', '', ''];
+    setImgErrors(newErrors);
+    
+    // Check file type (only images allowed)
+    if (!file.type.startsWith('image/')) {
+      newErrors[idx] = 'Please upload a valid image file';
+      setImgErrors(newErrors);
+      return;
+    }
+    
+    // No authentication required for uploads
+    console.log('Proceeding with image upload');
+    
+    // Check file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      newErrors[idx] = 'Only JPG, PNG, GIF, and WebP images are allowed';
+      setImgErrors(newErrors);
+      return;
+    }
+    
+    // Check file size (5MB max)
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      newErrors[idx] = `File size too large. Maximum allowed: ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
+      setImgErrors(newErrors);
+      return;
+    }
+    
+    try {
+      // Create a preview URL for immediate feedback
+      const previewUrl = URL.createObjectURL(file);
+      const newUrls = [...imgUrls];
+      newUrls[idx] = previewUrl;
+      setImgUrls(newUrls);
+      
+      // Upload the image to Supabase
+      const imageUrl = await uploadImageToSupabase(
+        file, 
+        `four-images/uploads/${Date.now()}_${file.name}`, 
+        'premium'
+      );
+      
+      if (!imageUrl) throw new Error('Failed to get image URL');
+      
+      // Update the images array with the new URL
+      const newImages = [...(data.images || ['', '', '', ''])];
+      newImages[idx] = imageUrl;
+      
+      // Update the parent component with the final URL
+      const updatedData = { ...data, images: newImages };
+      onChange(updatedData);
+      
+      // Update the preview URL in the parent component's state
+      const previewKey = `${data.id}_four_${idx}`;
+      setPreviewImageUrls(prev => ({
+        ...prev,
+        [previewKey]: imageUrl
+      }));
+      
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      const uploadErrors = [...imgErrors];
+      uploadErrors[idx] = error.message || 'Failed to upload image. Please try again.';
+      setImgErrors(uploadErrors);
+      
+      // Reset the preview on error
+      const newUrls = [...imgUrls];
+      newUrls[idx] = '';
+      setImgUrls(newUrls);
+    }
+  }
+
+  async function handleImgModalAdd() {
+    if (!pendingImgFile || pendingIdx === null) return;
+    
+    // Clear any previous error
+    const newErrors = [...imgErrors];
+    newErrors[pendingIdx] = '';
+    setImgErrors(newErrors);
+    
+    try {
+      // Create a preview URL for immediate feedback
+      const previewUrl = URL.createObjectURL(pendingImgFile);
+      const newUrls = [...imgUrls];
+      newUrls[pendingIdx] = previewUrl;
+      setImgUrls(newUrls);
+      
+      // Upload the image to Supabase
+      const imageUrl = await uploadImageToSupabase(
+        pendingImgFile, 
+        `four-images/uploads/${Date.now()}_${pendingImgFile.name}`, 
+        'premium'
+      );
+      
+      if (!imageUrl) {
+        throw new Error('Failed to upload image: No URL returned');
+      }
+      
+      // Update the images array with the new URL
+      const newImages = [...(data.images || [])];
+      newImages[pendingIdx] = imageUrl;
+      
+      // Update the parent component
+      onChange({ ...data, images: newImages });
+      
+      // Close the modal
+      setShowImgModal(false);
+      setPendingImgFile(null);
+      setPendingIdx(null);
+      
+    } catch (error) {
+      console.error('Error in handleImgModalAdd:', error);
+      const uploadErrors = [...imgErrors];
+      uploadErrors[pendingIdx] = error.message || 'Failed to upload image. Please try again.';
+      setImgErrors(uploadErrors);
+      
+      // Reset the preview on error
+      const newUrls = [...imgUrls];
+      newUrls[pendingIdx] = '';
+      setImgUrls(newUrls);
+      
+      // Keep the modal open to show the error
+    }
+  }
+
+  function handleImgModalRemove() {
+    if (pendingIdx === null) return;
+    
+    // Clear the image at the pending index
+    const newImages = [...(data.images || [])];
+    newImages[pendingIdx] = '';
+    
+    // Update the component state
+    const newUrls = [...imgUrls];
+    newUrls[pendingIdx] = '';
+    setImgUrls(newUrls);
+    
+    // Update the parent component
+    onChange({ ...data, images: newImages });
+    
+    // Reset the modal state
+    setShowImgModal(false);
+    setPendingImg(null);
+    setPendingImgFile(null);
+    setPendingImgDims({ width: 0, height: 0 });
+    setPendingIdx(null);
+  }
+
+  function handleHeadlineChange(e) {
+    onChange({ ...data, headline: e.target.value });
+  }
+  function handleItemHeadlineChange(idx, e) {
+    const headlines = [...(data.itemHeadlines || [ '', '', '', '' ])];
+    headlines[idx] = e.target.value;
+    onChange({ ...data, itemHeadlines: headlines });
+  }
+  function handleItemBodyChange(idx, e) {
+    const bodies = [...(data.itemBodies || [ '', '', '', '' ])];
+    bodies[idx] = e.target.value;
+    onChange({ ...data, itemBodies: bodies });
+  }
+
+  // Drag and drop handlers
+  function handleDragOver(idx, e) {
+    e.preventDefault();
+    setDragActive(arr => arr.map((v, i) => i === idx ? true : v));
+  }
+  function handleDragLeave(idx, e) {
+    e.preventDefault();
+    setDragActive(arr => arr.map((v, i) => i === idx ? false : v));
+  }
+  function handleDrop(idx, e) {
+    e.preventDefault();
+    setDragActive(arr => arr.map((v, i) => i === idx ? false : v));
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleImageChange(idx, e.dataTransfer.files[0]);
+    }
+  }
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '32px 32px 24px 32px', marginBottom: 36, maxWidth: 1200, width: '100%', position: 'relative', border: '1.5px solid #e0e7ef' }}>
+      {/* Cancel/Delete button in top right */}
+      <div style={{ position: 'absolute', top: 14, right: 18, display: 'flex', gap: 4, zIndex: 10 }}>
+        <button
+          className="acm-module-move"
+          title="Move Up"
+          onClick={onMoveUp}
+          disabled={!onMoveUp}
+          style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveUp ? 'pointer' : 'not-allowed' }}
+        >
+          &uarr;
+        </button>
+        <button
+          className="acm-module-move"
+          title="Move Down"
+          onClick={onMoveDown}
+          disabled={!onMoveDown}
+          style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveDown ? 'pointer' : 'not-allowed' }}
+        >
+          &darr;
+        </button>
+        <button
+          className="acm-module-delete"
+          onClick={onDelete}
+          title="Delete"
+          style={{ fontSize: '1.5rem', color: '#b12704', background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          ×
+        </button>
+      </div>
+      {showImgModal && (
+        <div className="acm-modal-overlay">
+          <div className="acm-modal acm-img-modal" style={{ minWidth: 900, maxWidth: 1200 }}>
+            <div className="acm-modal-header">Asset library : Image details
+              <button className="acm-modal-close" onClick={() => setShowImgModal(false)}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 32 }}>
+              <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ background: '#eee', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  {pendingImg && <img src={pendingImg} alt="Preview" style={{ maxWidth: 500, maxHeight: 350, borderRadius: 8 }} />}
+                </div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>{pendingImgFile?.name}</div>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div><b>Size</b><br />{pendingImgFile ? (pendingImgFile.size / 1024).toFixed(2) + ' KB' : ''}</div>
+                <div><b>Dimensions</b><br />{pendingImgDims.width} x {pendingImgDims.height}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              <button className="acm-btn-cancel" onClick={() => setShowImgModal(false)}>Back</button>
+              <button className="acm-btn-remove" onClick={handleImgModalRemove}>Delete</button>
+              <button className="acm-btn-save" onClick={handleImgModalAdd}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ fontWeight: 700, fontSize: 20, color: '#23272f', marginBottom: 18 }}>Standard Four Images & Text</div>
+      <div style={{ display: 'flex', gap: 32, overflowX: 'auto', width: '100%' }}>
+        {[0,1,2,3].map(idx => (
+          <div key={idx} style={{ flex: '1 1 220px', minWidth: 220, maxWidth: 300, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <label style={{ fontWeight: 600, marginBottom: 4, display: 'block' }}>{idx === 0 ? '* Image' : 'Image'}</label>
+            <div
+              style={{
+                border: dragActive[idx] ? '2px solid #38bdf8' : '2px dashed #38bdf8',
+                borderRadius: 10,
+                background: dragActive[idx] ? '#e0f2fe' : '#f0faff',
+                width: '100%',
+                maxWidth: 300,
+                minWidth: 220,
+                aspectRatio: '1/1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 8,
+                position: 'relative',
+                cursor: 'pointer',
+                transition: 'background 0.2s, border 0.2s',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+              }}
+              onClick={() => document.getElementById(`four-img-upload-${data.id}-${idx}`).click()}
+              onDragOver={e => handleDragOver(idx, e)}
+              onDragLeave={e => handleDragLeave(idx, e)}
+              onDrop={e => handleDrop(idx, e)}
+            >
+              {imgUrls[idx] ? (
+                <img src={imgUrls[idx]} alt={`Item ${idx+1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', maxWidth: '100%', maxHeight: '100%' }} />
+              ) : (
+                <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>
+                  <div style={{ fontSize: 36, marginBottom: 4 }}>📷</div>
+                  <div style={{ fontSize: 15 }}>220:220</div>
+                  <div style={{ fontSize: 14 }}>Click or drag image</div>
+                </div>
+              )}
+              <input id={`four-img-upload-${data.id}-${idx}`} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleImageChange(idx, e.target.files[0])} />
+            </div>
+            {imgErrors[idx] && <div style={{ color: '#b12704', fontSize: 13, marginBottom: 4 }}>{imgErrors[idx]}</div>}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 64 }}>
+        {[0,1,2,3].map(idx => (
+          <div key={idx} style={{ flex: 1 }}>
+            <label style={{ fontWeight: 600, marginBottom: 4, display: 'block' }}>Headline</label>
+            <input type="text" value={(data.itemHeadlines || [ '', '', '', '' ])[idx]} onChange={e => handleItemHeadlineChange(idx, e)} placeholder="Enter headline text" style={{ width: '100%', fontSize: 15, padding: 7, borderRadius: 0, border: '1.5px solid #e0e7ef', marginBottom: 14 }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 24 }}>
+        {[0,1,2,3].map(idx => (
+          <div key={idx} style={{ flex: 1 }}>
+            <label style={{ fontWeight: 600, marginBottom: 4, display: 'block', marginTop: 8 }}>Body text</label>
+            <textarea value={(data.itemBodies || [ '', '', '', '' ])[idx]} onChange={e => handleItemBodyChange(idx, e)} placeholder="Enter body text" style={{ width: '100%', minHeight: 100, fontSize: 15, padding: 7, borderRadius: 0, border: '1.5px solid #e0e7ef', resize: 'vertical' }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Add preview rendering for PremiumFourImagesTextModule
+function PremiumFourImagesTextPreview({ data, previewImageUrls, mode }) {
+  // mode: 'desktop' or 'mobile'
+  const images = data.images || ['', '', '', ''];
+  const headlines = data.itemHeadlines || ['', '', '', ''];
+  const bodies = data.itemBodies || ['', '', '', ''];
+  
+  const renderImageItem = (idx) => {
+    // First check previewImageUrls, then check data.images directly
+    const previewKey = `${data.id}_four_${idx}`;
+    const imageUrl = previewImageUrls[previewKey] || images[idx];
+    
+    // If we have a URL that starts with data: or http, use it directly
+    const finalImageUrl = imageUrl && (imageUrl.startsWith('data:') || imageUrl.startsWith('http')) 
+      ? imageUrl 
+      : '';
+    return (
+      <div key={idx} style={mode === 'desktop' ? { flex: 1, minWidth: 180, maxWidth: 220, textAlign: 'left' } : { width: 320, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ 
+          width: 220, 
+          height: 220, 
+          margin: '0 auto', 
+          marginBottom: 8, 
+          background: '#f8f9fa', 
+          borderRadius: 0, 
+          overflow: 'hidden', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          border: '1px solid #e2e8f0'
+        }}>
+          {finalImageUrl ? (
+            <img 
+              src={finalImageUrl} 
+              alt={headlines[idx] || `Image ${idx+1}`} 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'contain', 
+                borderRadius: 0 
+              }} 
+              onError={(e) => {
+                console.error(`Error loading image: ${finalImageUrl}`);
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<div style="color: #94a3b8; font-size: 14px;">Image not found</div>';
+              }}
+            />
+          ) : (
+            <div style={{ color: '#94a3b8', fontSize: 14 }}>No image</div>
+          )}
+        </div>
+        <div style={{ 
+          fontWeight: 550, 
+          fontSize: 17, 
+          color: '#0F1111', 
+          fontFamily: 'Amazon Ember, Arial, sans-serif', 
+          margin: '0px 0px 6px', 
+          width: '100%', 
+          textAlign: 'left' 
+        }}>
+          {headlines[idx]}
+        </div>
+        <div style={{ 
+          fontSize: mode === 'desktop' ? 12 : 14, 
+          color: mode === 'desktop' ? '#0F1111' : '#23272f', 
+          width: '100%', 
+          textAlign: 'left',
+          fontFamily: 'Amazon Ember, Arial, sans-serif',
+          marginBottom: mode === 'desktop' ? 0 : 16
+        }}>
+          {bodies[idx]}
+        </div>
+      </div>
+    );
+  };
+  
+  if (mode === 'desktop') {
+    return (
+      <div style={{ margin: '0 0 24px 0', width: '100%' }}>
+        {data.headline && (
+          <div style={{ display: 'flex', width: '100%', justifyContent: 'flex-start' }}>
+            <div style={{ 
+              fontWeight: 550, 
+              fontSize: 17, 
+              color: '#0F1111', 
+              fontFamily: 'Arial, sans-serif', 
+              textAlign: 'left', 
+              marginBottom: 8, 
+              minWidth: 220, 
+              maxWidth: 220, 
+              marginLeft: 380 
+            }}>
+              {data.headline}
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 32, justifyContent: 'center', alignItems: 'flex-start' }}>
+          {[0, 1, 2, 3].map(idx => renderImageItem(idx))}
+        </div>
+      </div>
+    );
+  }
+  
+  // Mobile view
+  return (
+    <div style={{ margin: '0 0 24px 0', width: '100%' }}>
+      {data.headline && (
+        <div style={{ 
+          textAlign: 'left', 
+          fontWeight: 700, 
+          fontSize: 22, 
+          marginBottom: 18, 
+          color: '#23272f', 
+          padding: '0 16px'
+        }}>
+          {data.headline}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'center' }}>
+        {[0, 1, 2, 3].map(idx => renderImageItem(idx))}
+      </div>
+    </div>
+  );
+}
+
+// PremiumThreeImagesTextModule is now imported from a separate file
+
+
+
+
+
+// Preview component for PremiumThreeImagesTextModule
+function PremiumThreeImagesTextPreview({ data, previewImageUrls, mode }) {
+  // mode: 'desktop' or 'mobile'
+  const images = data.images || ['', '', ''];
+  const headlines = data.itemHeadlines || ['', '', ''];
+  const bodies = data.itemBodies || ['', '', ''];
+  return mode === 'desktop' ? (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {data.headline && (
+        <div style={{ width: '100%', maxWidth: 1200, margin: '0 auto 8px', padding: '0 20px' }}>
+          <div style={{ fontWeight: 700, fontSize: 18, color: '#23272f', fontFamily: 'Amazon Ember, Arial, sans-serif', textAlign: 'center' }}>
+            {data.headline}
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', alignItems: 'flex-start', width: '100%', maxWidth: 1200, padding: '0 20px' }}>
+        {[0,1,2].map(idx => (
+          <div key={idx} style={{ flex: 1, textAlign: 'left', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ width: '100%', marginBottom: 10, display: 'flex', justifyContent: 'center' }}>
+              {previewImageUrls[data.id + '_three_' + idx] ? (
+                <img 
+                  src={previewImageUrls[data.id + '_three_' + idx]} 
+                  alt={headlines[idx] || `Image ${idx+1}`} 
+                  style={{ maxWidth: '100%', height: 'auto', maxHeight: 400, objectFit: 'contain' }} 
+                />
+              ) : null}
+            </div>
+            <div style={{ fontWeight: 550, fontSize: 17, color: '#0F1111', fontFamily: 'Amazon Ember, Arial, sans-serif', margin: '0 0 10px', width: '100%' }}>
+              {headlines[idx]}
+            </div>
+            <div style={{ fontSize: 14, color: '#0F1111', fontFamily: 'Amazon Ember, Arial, sans-serif', width: '100%' }}>
+              {bodies[idx]}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {data.headline && (
+        <div style={{ fontWeight: 700, fontSize: 16, margin: '0 0 16px', color: '#23272f', textAlign: 'center', width: '100%', maxWidth: 1200, padding: '0 20px' }}>
+          {data.headline}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 480, padding: '0 20px' }}>
+        {[0,1,2].map(idx => (
+          <div key={idx} style={{ width: '100%' }}>
+            <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+              {previewImageUrls[data.id + '_three_' + idx] && (
+                <img 
+                  src={previewImageUrls[data.id + '_three_' + idx]} 
+                  alt={headlines[idx] || `Image ${idx+1}`} 
+                  style={{ maxWidth: '100%', height: 'auto', maxHeight: 180, objectFit: 'contain' }} 
+                />
+              )}
+            </div>
+            <div style={{ fontWeight: 550, fontSize: 17, color: '#0F1111', margin: '0 0 6px', width: '100%' }}>
+              {headlines[idx]}
+            </div>
+            <div style={{ fontSize: 14, color: '#0F1111', width: '100%' }}>
+              {bodies[idx]}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Premium Full Image Preview Component with proper sizing and spacing
+function PremiumFullImagePreview({ data, previewImageUrls, mode }) {
+  const imageUrl = mode === 'mobile' 
+    ? (previewImageUrls[`${data.id}_mobile`] || data.mobileImage || '')
+    : (previewImageUrls[`${data.id}_desktop`] || data.desktopImage || '');
+
+  const containerStyle = {
+    width: '100%',
+    maxWidth: '1464px',
+    margin: '0 auto 24px',
+    overflow: 'hidden',
+    height: '600px', // Fixed container height
+    position: 'relative',
+    backgroundColor: '#f3f4f6'
+  };
+
+  const imageStyle = {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+    margin: '0 auto',
+    borderRadius: '0px',
+    backgroundColor: '#f3f4f6' // Fallback background color
+  };
+
+  if (!imageUrl) {
+    return null; // Don't render anything if no image is available
+  }
+
+  return (
+    <img 
+      src={imageUrl} 
+      alt={data.headline || `${mode} image`}
+      style={{
+        ...imageStyle,
+        maxWidth: '1464px',
+        height: '600px',
+        marginBottom: '24px'
+      }}
+      onError={(e) => {
+        e.target.style.display = 'none'; // Hide the image if it fails to load
+      }}
+    />
+  );
+}
+
+// Premium Navigation Carousel Editor Component
+function PremiumNavigationCarouselModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) {
+  // Initialize panels state with 5 default panels if not provided
+  const [panels, setPanels] = useState(() => {
+    if (Array.isArray(data?.panels)) return data.panels;
+    
+    // Create 5 default panels
+    const defaultTexts = [
+      {
+        subHeadline: 'NEW ARRIVALS',
+        headline: 'Spring Collection 2024',
+        body: '<p>Discover our latest designs and colors for the new season. Limited time offer - 30% off on all new arrivals.</p>'
+      },
+      {
+        subHeadline: 'SUMMER SALE',
+        headline: 'Up to 50% Off',
+        body: '<p>Refresh your wardrobe with our summer collection. Special prices for a limited time only.</p>'
+      },
+      {
+        subHeadline: 'LUXURY EDITION',
+        headline: 'Handcrafted Elegance',
+        body: '<p>Experience the finest quality with our exclusive luxury collection. Limited pieces available.</p>'
+      },
+      {
+        subHeadline: 'TRENDING NOW',
+        headline: 'Best Sellers',
+        body: '<p>Shop our most loved products this season. Customer favorites with rave reviews.</p>'
+      },
+      {
+        subHeadline: 'EXCLUSIVE',
+        headline: 'Members Only',
+        body: '<p>Join our membership program for exclusive access to sales and new collections.</p>'
+      }
+    ];
+
+    return Array(5).fill().map((_, index) => ({
+      id: uuidv4(),
+      navigationText: `Panel ${index + 1}`,
+      subHeadline: defaultTexts[index % defaultTexts.length].subHeadline,
+      headline: defaultTexts[index % defaultTexts.length].headline,
+      body: defaultTexts[index % defaultTexts.length].body,
+      image: '',
+      imageAlt: '',
+      textColor: '#000000',
+      buttonText: 'Learn More',
+      buttonUrl: '#',
+      buttonColor: '#2563eb',
+      buttonTextColor: '#ffffff',
+      showCaption: true
+    }));
+  });
+  
+  const [activePanelIndex, setActivePanelIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState('desktop');
+  const [imagePreview, setImagePreview] = useState('');
+  const [hoveredPanel, setHoveredPanel] = useState(null);
+  const fileInputRef = useRef(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [errors, setErrors] = useState({});
+  
+  // Minimum dimensions for images
+  const minDimensions = {
+    desktop: { width: 1464, height: 600 },
+    mobile: { width: 600, height: 450 }
+  };
+  
+  // Ensure activePanelIndex is within bounds
+  useEffect(() => {
+    if (panels.length > 0 && activePanelIndex >= panels.length) {
+      setActivePanelIndex(Math.max(0, panels.length - 1));
+    }
+  }, [panels.length, activePanelIndex]);
+
+  const handlePanelChange = (panelIndex, field, value) => {
+    const updatedPanels = [...panels];
+    updatedPanels[panelIndex] = { 
+      ...updatedPanels[panelIndex], 
+      [field]: value,
+      // Preserve existing fields when updating
+      ...(field === 'image' && { imageAlt: value ? `Panel ${panelIndex + 1} background` : '' })
+    };
+    setPanels(updatedPanels);
+    onChange({ ...data, panels: updatedPanels });
+  };
+  
+  // Handle panel reordering
+  const handlePanelMove = (fromIndex, direction) => {
+    if (fromIndex < 0 || fromIndex >= panels.length) return;
+    
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= panels.length) return;
+    
+    const newPanels = [...panels];
+    const [movedPanel] = newPanels.splice(fromIndex, 1);
+    newPanels.splice(toIndex, 0, movedPanel);
+    
+    setPanels(newPanels);
+    onChange({ ...data, panels: newPanels });
+    
+    // Update active panel index if needed
+    if (activePanelIndex === fromIndex) {
+      setActivePanelIndex(toIndex);
+    } else if (activePanelIndex === toIndex) {
+      setActivePanelIndex(fromIndex);
+    }
+  };
+  
+  // Handle panel removal
+  const handlePanelRemove = (index) => {
+    if (panels.length <= 2) return; // Don't allow removing if only 2 panels left
+    
+    const newPanels = panels.filter((_, i) => i !== index);
+    setPanels(newPanels);
+    onChange({ ...data, panels: newPanels });
+    
+    // Adjust active panel index if needed
+    if (index === activePanelIndex) {
+      setActivePanelIndex(Math.max(0, index - 1));
+    } else if (index < activePanelIndex) {
+      setActivePanelIndex(activePanelIndex - 1);
+    }
+  };
+
+  const onCancel = () => {
+    // Reset to original panel data or close the editor
+    if (activePanel.originalData) {
+      const updatedPanels = [...panels];
+      updatedPanels[activePanelIndex] = { ...activePanel.originalData };
+      onChange({ ...data, panels: updatedPanels });
+    }
+    // Close the editor or reset state as needed
+  };
+
+  const onSave = () => {
+    // Save the current panel data
+    const updatedPanels = [...panels];
+    // Clear any temporary data
+    updatedPanels[activePanelIndex] = {
+      ...updatedPanels[activePanelIndex],
+      originalData: null
+    };
+    onChange({ ...data, panels: updatedPanels });
+    
+    // If this is the last panel, close the editor or show success message
+    if (activePanelIndex === panels.length - 1) {
+      // Handle save completion (e.g., close modal, show success message)
+      console.log('All panels saved successfully');
+    }
+  };
+
+  const addPanel = () => {
+    if (panels.length >= 5) return;
+    
+    const newPanel = {
+      id: uuidv4(),
+      navigationText: `Panel ${panels.length + 1}`,
+      subHeadline: 'Sub Headline',
+      headline: 'Main Headline',
+      body: '<p>Add your descriptive text here.</p>',
+      image: ''
+    };
+    
+    const updatedPanels = [...panels, newPanel];
+    onChange({ ...data, panels: updatedPanels });
+    setActivePanelIndex(updatedPanels.length - 1);
+  };
+
+  const removePanel = (index) => {
+    if (panels.length <= 2) return;
+    
+    const updatedPanels = [...panels];
+    updatedPanels.splice(index, 1);
+    
+    // Adjust active panel index if needed
+    let newActiveIndex = activePanelIndex;
+    if (activePanelIndex >= updatedPanels.length) {
+      newActiveIndex = Math.max(0, updatedPanels.length - 1);
+    } else if (activePanelIndex >= index) {
+      newActiveIndex = Math.max(0, activePanelIndex - 1);
+    }
+    
+    onChange({ ...data, panels: updatedPanels });
+    setActivePanelIndex(newActiveIndex);
+  };
+
+  const handleImageUpload = async (file, panelIndex, isMobile = false) => {
+    if (!file) return false;
+
+    // Validate file type
+    if (!file.type.match('image.*')) {
+      setErrors(prev => ({
+        ...prev,
+        [`panel-${panelIndex}-image`]: 'Please upload a valid image file (JPEG, PNG, GIF, WebP)'
+      }));
+      return false;
+    }
+
+    // Validate file size (5MB max)
+    const maxSizeMB = 5;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      setErrors(prev => ({
+        ...prev,
+        [`panel-${panelIndex}-image`]: `Image size should be less than ${maxSizeMB}MB`
+      }));
+      return false;
+    }
+
+    // Set minimum dimensions based on device type
+    const minDims = isMobile 
+      ? { width: 600, height: 450, label: 'Mobile' } 
+      : { width: 1464, height: 600, label: 'Desktop' };
+
+    // Create preview
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+
+    // Validate dimensions
+    const img = new Image();
+    img.src = previewUrl;
+    
+    return new Promise((resolve) => {
+      img.onload = async () => {
+        if (img.width < minDims.width || img.height < minDims.height) {
+          setErrors(prev => ({
+            ...prev,
+            [`panel-${panelIndex}-image`]: `${minDims.label} image too small. Min: ${minDims.width}×${minDims.height}px`
+          }));
+          resolve(false);
+          return;
+        }
+
+        setIsUploading(true);
+        setErrors(prev => ({ ...prev, [`panel-${panelIndex}-image`]: '' }));
+        
+        try {
+          const filePath = await uploadImageToSupabase(file, 'premium-navigation-carousel');
+          const updatedPanels = [...panels];
+          updatedPanels[panelIndex] = { 
+            ...updatedPanels[panelIndex], 
+            image: filePath,
+            imageAlt: file.name,
+            ...(isMobile && { mobileImage: filePath })
+          };
+          onChange({ ...data, panels: updatedPanels });
+          resolve(true);
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          setErrors(prev => ({
+            ...prev,
+            [`panel-${panelIndex}-image`]: 'Error uploading image. Please try again.'
+          }));
+          resolve(false);
+        } finally {
+          setIsUploading(false);
+        }
+      };
+    });
+  };
+
+  const handleDrop = async (e, panelIndex) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await handleImageUpload(file, panelIndex);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const activePanel = panels[activePanelIndex] || {
+    id: uuidv4(),
+    navigationText: `Panel ${activePanelIndex + 1}`,
+    subHeadline: '',
+    headline: '',
+    body: '',
+    image: '',
+    imageAlt: '',
+    textColor: '#000000',
+    buttonText: 'Learn More',
+    buttonUrl: '#',
+    buttonColor: '#2563eb',
+    buttonTextColor: '#ffffff'
+  };
+
+  // File validation function
+  const validateFile = (file, panelIndex) => {
+    // Validate file type
+    if (!file.type.match('image.*')) {
+      setErrors(prev => ({
+        ...prev,
+        [`panel-${panelIndex}-image`]: 'Please upload a valid image file (JPEG, PNG, GIF, WebP)'
+      }));
+      return false;
+    }
+
+    // Validate file size (5MB max)
+    const maxSizeMB = 5;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      setErrors(prev => ({
+        ...prev,
+        [`panel-${panelIndex}-image`]: `Image size should be less than ${maxSizeMB}MB`
+      }));
+      return false;
+    }
+    return true;
+  };
+
+  const handleImageChange = (index, updatedPanel) => {
+    const updatedPanels = [...panels];
+    updatedPanels[index] = updatedPanel;
+    setPanels(updatedPanels);
+    onChange({ ...data, panels: updatedPanels });
+  };
+
+  const handlePanelClick = (index) => {
+    setActivePanelIndex(index);
+  };
+
+return (
+  <div className="premium-navigation-carousel-editor">
+    <div className="editor-header">
+      <h3>Premium Navigation Carousel</h3>
+      <div className="editor-actions">
+        <button className="btn btn-sm btn-outline-secondary" onClick={onCancel}>
+          <i className="fas fa-times"></i> Cancel
+        </button>
+        <button className="btn btn-sm btn-primary" onClick={onSave}>
+          <i className="fas fa-save"></i> Save Changes
+        </button>
+      </div>
+    </div>
+
+    <div className="editor-content">
+      {/* Left Column - Panel Selector */}
+      <div className="panel-previews">
+        <div className="panel-previews-header">
+          <h4>Panels ({panels.length}/5)</h4>
+          <button 
+            className="btn-add-panel"
+            onClick={addPanel}
+            disabled={panels.length >= 5}
+            title={panels.length >= 5 ? 'Maximum 5 panels allowed' : 'Add panel'}
+          >
+            <i className="fas fa-plus"></i> Add Panel
+          </button>
+        </div>
+        
+        <div className="panel-list">
+          {panels.map((panel, index) => (
+            <div 
+              key={panel.id}
+              className={`panel-item ${index === activePanelIndex ? 'active' : ''}`}
+              onClick={() => setActivePanelIndex(index)}
+            >
+              <div className="panel-thumbnail">
+                {panel.image ? (
+                  <img src={panel.image} alt={`Panel ${index + 1}`} />
+                ) : (
+                  <div className="panel-thumbnail-placeholder">
+                    <i className="fas fa-image"></i>
+                  </div>
+                )}
+              </div>
+              <div className="panel-details">
+                <div className="panel-title">
+                  {panel.navigationText || `Panel ${index + 1}`}
+                </div>
+                <div className="panel-actions">
+                  {index > 0 && (
+                    <button 
+                      className="btn-icon" 
+                      onClick={(e) => { e.stopPropagation(); handlePanelMove(index, 'up'); }}
+                      title="Move up"
+                    >
+                      <i className="fas fa-arrow-up"></i>
+                    </button>
+                  )}
+                  {index < panels.length - 1 && (
+                    <button 
+                      className="btn-icon" 
+                      onClick={(e) => { e.stopPropagation(); handlePanelMove(index, 'down'); }}
+                      title="Move down"
+                    >
+                      <i className="fas fa-arrow-down"></i>
+                    </button>
+                  )}
+                  {panels.length > 2 && (
+                    <button 
+                      className="btn-icon text-danger" 
+                      onClick={(e) => { e.stopPropagation(); removePanel(index); }}
+                      title="Remove panel"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Right Column - Panel Editor */}
+      <div className="panel-editor">
+        {activePanel && (
+          <>
+            <div className="panel-editor-header">
+              <h5>Panel {activePanelIndex + 1}</h5>
+              {errors[`panel-${activePanelIndex}-image`] && (
+                <div className="alert alert-warning">
+                  <i className="fas fa-exclamation-triangle"></i> {errors[`panel-${activePanelIndex}-image`]}
+                </div>
+              )}
+            </div>
+            
+            <div className="form-group">
+              <label>Navigation Text <span className="required">*</span></label>
+              <input
+                type="text"
+                className="form-control"
+                value={activePanel.navigationText || ''}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'navigationText', e.target.value)}
+                placeholder="e.g., Small Dogs, Family Dogs"
+                required
+              />
+              <div className="form-hint">This text appears in the carousel navigation</div>
+            </div>
+
+            <div className="form-group">
+              <label>Image <span className="required">*</span></label>
+              <div 
+                className={`image-upload ${isDragging ? 'dragging' : ''}`}
+                onDrop={(e) => handleDrop(e, activePanelIndex)}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {activePanel.image ? (
+                  <div className="image-preview">
+                    <img src={activePanel.image} alt="Preview" />
+                    <div className="image-actions">
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-outline-light"
+                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                      >
+                        Change Image
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="upload-placeholder">
+                    <i className="fas fa-cloud-upload-alt"></i>
+                    <p>Drag & drop an image or click to browse</p>
+                    <p className="text-muted">Recommended size: 1464 × 600px</p>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/*"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      handleImageUpload(e.target.files[0], activePanelIndex);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Sub-headline</label>
+              <input
+                type="text"
+                className="form-control"
+                value={activePanel.subHeadline || ''}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'subHeadline', e.target.value)}
+                placeholder="e.g., NEW ARRIVALS"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Headline <span className="required">*</span></label>
+              <input
+                type="text"
+                className="form-control"
+                value={activePanel.headline || ''}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'headline', e.target.value)}
+                placeholder="e.g., Spring Collection 2024"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Body Text</label>
+              <textarea
+                className="form-control"
+                rows="4"
+                value={activePanel.body?.replace(/<[^>]*>/g, '') || ''}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'body', `<p>${e.target.value}</p>`)}
+                placeholder="Enter your descriptive text here..."
+              />
+              <div className="form-hint">Supports basic HTML formatting</div>
+            </div>
+
+            <div className="form-group">
+              <label>Button Text</label>
+              <input
+                type="text"
+                className="form-control"
+                value={activePanel.buttonText || 'Learn More'}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'buttonText', e.target.value)}
+                placeholder="e.g., Shop Now"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Button URL</label>
+              <input
+                type="url"
+                className="form-control"
+                value={activePanel.buttonUrl || '#'}
+                onChange={(e) => handlePanelChange(activePanelIndex, 'buttonUrl', e.target.value)}
+                placeholder="https://example.com"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Show Caption</label>
+              <div className="form-check">
+                <input
+                  type="checkbox"
+                  id={`show-caption-${activePanelIndex}`}
+                  className="form-check-input"
+                  checked={activePanel.showCaption !== false}
+                  onChange={(e) => handlePanelChange(activePanelIndex, 'showCaption', e.target.checked)}
+                />
+                <label className="form-check-label" htmlFor={`show-caption-${activePanelIndex}`}>
+                  Show text overlay on this panel
+                </label>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+// Module Select Modal Component
+function ModuleSelectModal({ templates, onSelect, onClose }) {
+  return (
+    <div className="acm-modal-overlay">
+      <div className="acm-modal">
+        <div className="acm-modal-header">
+          <span>Add Module</span>
+          <button className="acm-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="acm-modal-grid">
+          {templates.map(m => {
+            // Apply special styling to comparison chart
+            if (m.id === 'standard-comparison-chart') {
+              return (
+                <div
+                  key={m.id}
+                  className="acm-modal-card"
+                  data-module={m.id}
+                  onClick={() => onSelect(m)}
+                  style={{ background: 'none', border: 'none', boxShadow: 'none', textAlign: 'left' }}
+                >
+                  <img
+                    src={m.img}
+                    alt={m.title}
+                    className="acm-modal-img"
+                    style={{ 
+                      marginTop: 6, 
+                      width: 454, 
+                      height: 233, 
+                      objectFit: 'cover', 
+                      display: 'block', 
+                      marginLeft: -30 
+                    }}
+                  />
+                  {m.title && <div className="acm-modal-title" style={{ marginLeft: -460, marginTop: 12 }}>{m.title}</div>}
+                  {m.description && <div className="acm-modal-desc" style={{ marginLeft: -460 }}>{m.description}</div>}
+                </div>
+              );
+            }
+            
+            // Apply special styling to premium background image and regimen carousel
+            if (m.id === 'premium-regimen-carousel' || m.id === 'premium-background-image') {
+              return (
+                <div
+                  key={m.id}
+                  className="acm-modal-card"
+                  data-module={m.id}
+                  onClick={() => onSelect(m)}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    boxShadow: 'none',
+                    marginTop: '-50px',  // Move the card up by 50px
+                    marginLeft: '-25px'  // Add left margin to align with other modules
+                  }}
+                >
+                  <img
+                    src={m.img}
+                    alt={m.title}
+                    className="acm-modal-img"
+                    style={{ 
+                      width: '100%',
+                      height: 'auto',
+                      objectFit: 'cover',
+                      display: 'block',
+                      marginBottom: '12px'
+                    }}
+                  />
+                  <div style={{ padding: '0 8px' }}>
+                    {m.title && <div className="acm-modal-title" style={{ marginTop: '8px' }}>{m.title}</div>}
+                    {m.description && <div className="acm-modal-desc">{m.description}</div>}
+                  </div>
+                </div>
+              );
+            }
+            
+            // Default styling for other modules
+            return (
+              <div key={m.id} className="acm-modal-card" data-module={m.id} onClick={() => onSelect(m)}>
+                <img src={m.img} alt={m.title} className="acm-modal-img" />
+                {m.title && <div className="acm-modal-title">{m.title}</div>}
+                {m.description && <div className="acm-modal-desc">{m.description}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Removed duplicate module templates - using the ones defined in PREMIUM_MODULE_TEMPLATES
+
+
+// Add the editor component for Standard Single Left Image
+function PremiumSingleLeftImageModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) {
+  const [imgError, setImgError] = useState('');
+  const [showImgModal, setShowImgModal] = useState(false);
+  const [pendingImg, setPendingImg] = useState(null);
+  const [pendingImgFile, setPendingImgFile] = useState(null);
+  const [pendingImgDims, setPendingImgDims] = useState({ width: 0, height: 0 });
+  const [currentImageUrl, setCurrentImageUrl] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [activeTab, setActiveTab] = useState('desktop');
+  const fileInputRef = useRef(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Load image from IndexedDB when image ID changes
+  useEffect(() => {
+    async function loadImage() {
+      if (data.image && data.image !== '' && !data.image.startsWith('data:')) {
+        try {
+          const imageData = await acmDB.getImage(data.image);
+          if (imageData) {
+            setCurrentImageUrl(imageData);
+          }
+        } catch (error) {
+          setCurrentImageUrl('');
+        }
+      } else if (data.image && data.image.startsWith('data:')) {
+        setCurrentImageUrl(data.image);
+      } else {
+        setCurrentImageUrl('');
+      }
+    }
+    loadImage();
+  }, [data.image]);
+
+  function handleImageChange(e) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processImageFile(files[0]);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processImageFile(e.dataTransfer.files[0]);
+    }
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    setIsDragActive(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    setIsDragActive(false);
+  }
+
+  function processImageFile(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        if (img.width !== 300 || img.height !== 300) {
+          setImgError('Image must be exactly 300 x 300 px.');
+          return;
+        }
+        setImgError('');
+        setPendingImg(ev.target.result);
+        setPendingImgFile(file);
+        setPendingImgDims({ width: img.width, height: img.height });
+        setShowImgModal(true);
+      };
+      img.onerror = () => setImgError('Invalid image file.');
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleImgModalAdd() {
+    try {
+      const imageId = acmDB.generateId();
+      await acmDB.saveImage(imageId, pendingImg, null);
+      onChange({ ...data, image: imageId });
+      setShowImgModal(false);
+      setPendingImg(null);
+      setPendingImgFile(null);
+      setPendingImgDims({ width: 0, height: 0 });
+    } catch (error) {
+      setImgError('Failed to save image. Please try again.');
+    }
+  }
+  function handleImgModalRemove() {
+    setPendingImg(null);
+    setPendingImgFile(null);
+    setPendingImgDims({ width: 0, height: 0 });
+    setShowImgModal(false);
+    onChange({ ...data, image: '' });
+    setCurrentImageUrl('');
+  }
+  function handleImgModalCancel() {
+    setPendingImg(null);
+    setPendingImgFile(null);
+    setPendingImgDims({ width: 0, height: 0 });
+    setShowImgModal(false);
+  }
+
+  function handleHeadlineChange(e) {
+    onChange({ ...data, headline: e.target.value });
+  }
+  function handleBodyChange(e) {
+    onChange({ ...data, body: e.target.value });
+  }
+
+  return (
+    <div style={{ marginBottom: 36, maxWidth: 700, width: '100%', position: 'relative' }}>
+      <div style={{ fontWeight: 700, fontSize: 20, color: '#23272f', marginBottom: 24 }}>Standard Single Left Image</div>
+      {showImgModal && (
+        <div className="acm-modal-overlay">
+          <div className="acm-modal acm-img-modal" style={{ minWidth: 500, maxWidth: 600 }}>
+            <div className="acm-modal-header">Asset library : Image details
+              <button className="acm-modal-close" onClick={handleImgModalCancel}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 32 }}>
+              <div style={{ flex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ background: '#eee', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  {pendingImg && <img src={pendingImg} alt="Preview" style={{ maxWidth: 300, maxHeight: 300, borderRadius: 8 }} />}
+                </div>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>{pendingImgFile?.name}</div>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div><b>Size</b><br />{pendingImgFile ? (pendingImgFile.size / 1024).toFixed(2) + ' KB' : ''}</div>
+                <div><b>Dimensions</b><br />{pendingImgDims.width} x {pendingImgDims.height}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+              <button className="acm-btn-cancel" onClick={handleImgModalCancel}>Back</button>
+              <button className="acm-btn-remove" onClick={handleImgModalRemove}>Delete</button>
+              <button className="acm-btn-save" onClick={handleImgModalAdd}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ width: 300, height: 300, background: '#f8fafc', border: '2px dashed #38bdf8', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginRight: 24, position: 'relative' }}
+          onClick={() => fileInputRef.current.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          {currentImageUrl ? (
+            <img src={currentImageUrl} alt="Preview" style={{ width: 300, height: 300, objectFit: 'cover', borderRadius: 8 }} />
+          ) : (
+            <span style={{ color: '#38bdf8', textAlign: 'center', fontWeight: 600 }}>Click or drag to upload<br />300 × 300 px</span>
+          )}
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input
+            type="text"
+            value={data.headline || ''}
+            onChange={handleHeadlineChange}
+            placeholder="Headline"
+            style={{ fontWeight: 700, fontSize: 18, border: 'none', borderBottom: '1.5px solid #e0e7ef', marginBottom: 8, outline: 'none', padding: 4 }}
+          />
+          <textarea
+            value={data.body || ''}
+            onChange={handleBodyChange}
+            placeholder="Body text"
+            style={{ fontSize: 15, border: 'none', borderBottom: '1.5px solid #e0e7ef', minHeight: 80, outline: 'none', padding: 4, resize: 'vertical' }}
+          />
+        </div>
+      </div>
+      {imgError && <div className="acm-img-error">{imgError}</div>}
+      <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 8 }}>
+        <button className="acm-module-move" title="Move Up" onClick={onMoveUp} disabled={!onMoveUp} style={{fontSize:'1.2rem',padding:'0 8px',color:'#64748b',background:'none',border:'none',cursor:onMoveUp?'pointer':'not-allowed'}}>&uarr;</button>
+        <button className="acm-module-move" title="Move Down" onClick={onMoveDown} disabled={!onMoveDown} style={{fontSize:'1.2rem',padding:'0 8px',color:'#64748b',background:'none',border:'none',cursor:onMoveDown?'pointer':'not-allowed'}}>&darr;</button>
+        <button onClick={onDelete} title="Delete" style={{ color: '#b12704', background: 'none', border: 'none', fontSize: 22, cursor: 'pointer' }}>×</button>
+      </div>
+    </div>
+  );
+}
+
+// Add preview rendering for PremiumSingleLeftImageModule
+function PremiumSingleLeftImagePreview({ data, previewImageUrls }) {
+  const imageUrl = previewImageUrls[data.id] || '';
+  return imageUrl ? (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 32, width: '100%', maxWidth: 900, margin: '0 auto' }}>
+      <img src={imageUrl} alt={data.headline || 'Preview'} style={{ width: 300, height: 300, objectFit: 'cover', flexShrink: 0 }} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+        <div style={{ fontSize: 17, fontFamily: 'Arial, sans-serif', margin: '0px 0px 6px', fontWeight: 700, color: '#23272f', textAlign: 'left' }}>{data.headline}</div>
+        <div style={{ fontSize: 14, color: '#23272f', fontFamily: 'Amazon Ember, Arial, sans-serif', textAlign: 'left', lineHeight: 1.5, margin: 0 }}>{data.body}</div>
+      </div>
+    </div>
+  ) : null;
+}
+
+// Add this component for the Standard Single Image & Sidebar module
+function StandardSingleImageSidebarModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) {
+  // State for images, captions, text fields, and bullet points
+  const [leftImgUrl, setLeftImgUrl] = useState(data.leftImgUrl || '');
+  const [leftImgFile, setLeftImgFile] = useState(null);
+  const [leftImgCaption, setLeftImgCaption] = useState(data.leftImgCaption || '');
+  const [centerHeadline, setCenterHeadline] = useState(data.centerHeadline || '');
+  const [centerSubHeadline, setCenterSubHeadline] = useState(data.centerSubHeadline || '');
+  const [centerBody, setCenterBody] = useState(data.centerBody || '');
+  const [centerBullets, setCenterBullets] = useState(data.centerBullets || ['']);
+  const [rightImgUrl, setRightImgUrl] = useState(data.rightImgUrl || '');
+  const [rightImgFile, setRightImgFile] = useState(null);
+  const [rightHeadline, setRightHeadline] = useState(data.rightHeadline || '');
+  const [rightBody, setRightBody] = useState(data.rightBody || '');
+  const [rightBullets, setRightBullets] = useState(data.rightBullets || ['']);
+
+  // Handlers for image upload
+  function handleLeftImgChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setLeftImgUrl(ev.target.result);
+      setLeftImgFile(file);
+      onChange({ ...data, leftImgUrl: ev.target.result });
+    };
+    reader.readAsDataURL(file);
+  }
+  function handleRightImgChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setRightImgUrl(ev.target.result);
+      setRightImgFile(file);
+      onChange({ ...data, rightImgUrl: ev.target.result });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Handlers for bullet points
+  function handleCenterBulletChange(idx, val) {
+    const arr = [...centerBullets];
+    arr[idx] = val;
+    setCenterBullets(arr);
+    onChange({ ...data, centerBullets: arr });
+  }
+  function addCenterBullet() {
+    setCenterBullets([...centerBullets, '']);
+    onChange({ ...data, centerBullets: [...centerBullets, ''] });
+  }
+  function removeCenterBullet(idx) {
+    const arr = centerBullets.filter((_, i) => i !== idx);
+    setCenterBullets(arr);
+    onChange({ ...data, centerBullets: arr });
+  }
+  function handleRightBulletChange(idx, val) {
+    const arr = [...rightBullets];
+    arr[idx] = val;
+    setRightBullets(arr);
+    onChange({ ...data, rightBullets: arr });
+  }
+  function addRightBullet() {
+    setRightBullets([...rightBullets, '']);
+    onChange({ ...data, rightBullets: [...rightBullets, ''] });
+  }
+  function removeRightBullet(idx) {
+    const arr = rightBullets.filter((_, i) => i !== idx);
+    setRightBullets(arr);
+    onChange({ ...data, rightBullets: arr });
+  }
+
+  // Handlers for text fields
+  function handleFieldChange(field, value) {
+    onChange({ ...data, [field]: value });
+    switch (field) {
+      case 'leftImgCaption': setLeftImgCaption(value); break;
+      case 'centerHeadline': setCenterHeadline(value); break;
+      case 'centerSubHeadline': setCenterSubHeadline(value); break;
+      case 'centerBody': setCenterBody(value); break;
+      case 'rightHeadline': setRightHeadline(value); break;
+      case 'rightBody': setRightBody(value); break;
+      default: break;
+    }
+  }
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '32px', marginBottom: 36, maxWidth: 1200, width: '100%', position: 'relative', border: '1.5px solid #e0e7ef' }}>
+      {/* Top right controls */}
+      <div style={{ position: 'absolute', top: 14, right: 18, display: 'flex', gap: 4, zIndex: 10 }}>
+        <button className="acm-module-move" title="Move Up" onClick={onMoveUp} disabled={!onMoveUp} style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveUp ? 'pointer' : 'not-allowed' }}>&uarr;</button>
+        <button className="acm-module-move" title="Move Down" onClick={onMoveDown} disabled={!onMoveDown} style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveDown ? 'pointer' : 'not-allowed' }}>&darr;</button>
+        <button className="acm-module-delete" onClick={onDelete} title="Delete" style={{ fontSize: '1.5rem', color: '#b12704', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 20, color: '#23272f', marginBottom: 18 }}>Standard Single Image & Sidebar</div>
+      <div style={{ display: 'flex', gap: 24 }}>
+        {/* Left image and caption */}
+        <div style={{ width: 220, minWidth: 220, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <label style={{ fontWeight: 600, marginBottom: 4, display: 'block' }}>* Image</label>
+          <div style={{ border: '2px dashed #38bdf8', borderRadius: 10, background: '#f0faff', width: 180, height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative', cursor: 'pointer', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => document.getElementById(`ssi-left-img-upload-${data.id}`).click()}>
+            {leftImgUrl ? (
+              <img src={leftImgUrl} alt="Left" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+            ) : (
+              <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>
+                <div style={{ fontSize: 36, marginBottom: 4 }}>📷</div>
+                <div style={{ fontSize: 15 }}>300:400</div>
+                <div style={{ fontSize: 14 }}>Click to add image</div>
+              </div>
+            )}
+            <input id={`ssi-left-img-upload-${data.id}`} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLeftImgChange} />
+          </div>
+          <input type="text" value={leftImgCaption} onChange={e => handleFieldChange('leftImgCaption', e.target.value)} placeholder="Enter image caption text" style={{ width: '100%', fontSize: 14, padding: 6, borderRadius: 4, border: '1.5px solid #e0e7ef', marginTop: 4 }} />
+        </div>
+        {/* Center fields */}
+        <div style={{ flex: 2, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input type="text" value={centerHeadline} onChange={e => handleFieldChange('centerHeadline', e.target.value)} placeholder="Enter headline text" style={{ fontWeight: 600, fontSize: 16, border: '1.5px solid #e0e7ef', borderRadius: 4, padding: 7, marginBottom: 4 }} />
+          <input type="text" value={centerSubHeadline} onChange={e => handleFieldChange('centerSubHeadline', e.target.value)} placeholder="Enter subheadline text" style={{ fontSize: 15, border: '1.5px solid #e0e7ef', borderRadius: 4, padding: 7, marginBottom: 4 }} />
+          <textarea value={centerBody} onChange={e => handleFieldChange('centerBody', e.target.value)} placeholder="Enter body text" style={{ width: '100%', minHeight: 80, fontSize: 15, padding: 7, borderRadius: 4, border: '1.5px solid #e0e7ef', resize: 'vertical', marginBottom: 4 }} />
+          {/* Center bullet points */}
+          {centerBullets.map((b, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <button type="button" onClick={() => removeCenterBullet(idx)} style={{ background: '#e0e7ef', border: 'none', borderRadius: 4, color: '#b12704', fontWeight: 700, fontSize: 16, width: 24, height: 24, cursor: 'pointer' }}>×</button>
+              <input type="text" value={b} onChange={e => handleCenterBulletChange(idx, e.target.value)} placeholder="Enter bullet point text" style={{ flex: 1, fontSize: 14, padding: 6, borderRadius: 4, border: '1.5px solid #e0e7ef' }} />
+            </div>
+          ))}
+          <button type="button" onClick={addCenterBullet} style={{ background: '#f0faff', border: '1.5px solid #38bdf8', color: '#38bdf8', borderRadius: 4, fontWeight: 600, fontSize: 14, padding: '4px 12px', cursor: 'pointer', marginTop: 2, alignSelf: 'flex-start' }}>+ Add bullet point</button>
+        </div>
+        {/* Right sidebar */}
+        <div style={{ width: 220, minWidth: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', borderLeft: '1.5px solid #e0e7ef', paddingLeft: 18 }}>
+          <label style={{ fontWeight: 600, marginBottom: 4, display: 'block' }}>* Image</label>
+          <div style={{ border: '2px dashed #38bdf8', borderRadius: 10, background: '#f0faff', width: 180, height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative', cursor: 'pointer', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => document.getElementById(`ssi-right-img-upload-${data.id}`).click()}>
+            {rightImgUrl ? (
+              <img src={rightImgUrl} alt="Right" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+            ) : (
+              <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>
+                <div style={{ fontSize: 36, marginBottom: 4 }}>📷</div>
+                <div style={{ fontSize: 15 }}>350:175</div>
+                <div style={{ fontSize: 14 }}>Click to add image</div>
+              </div>
+            )}
+            <input id={`ssi-right-img-upload-${data.id}`} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleRightImgChange} />
+          </div>
+          <input type="text" value={rightHeadline} onChange={e => handleFieldChange('rightHeadline', e.target.value)} placeholder="Enter headline text" style={{ fontWeight: 600, fontSize: 17, fontFamily: 'Arial, sans-serif', margin: '0px 0px 6px', textAlign: 'left', width: '100%' }} />
+          <textarea value={rightBody} onChange={e => handleFieldChange('rightBody', e.target.value)} placeholder="Enter body text" style={{ width: '100%', minHeight: 60, fontSize: 14, padding: 6, borderRadius: 4, border: '1.5px solid #e0e7ef', resize: 'vertical', marginBottom: 4 }} />
+          {/* Right bullet points */}
+          {rightBullets.map((b, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <button type="button" onClick={() => removeRightBullet(idx)} style={{ background: '#e0e7ef', border: 'none', borderRadius: 4, color: '#b12704', fontWeight: 700, fontSize: 16, width: 24, height: 24, cursor: 'pointer' }}>×</button>
+              <input type="text" value={b} onChange={e => handleRightBulletChange(idx, e.target.value)} placeholder="Enter bullet point text" style={{ flex: 1, fontSize: 14, padding: 6, borderRadius: 4, border: '1.5px solid #e0e7ef' }} />
+            </div>
+          ))}
+          <button type="button" onClick={addRightBullet} style={{ background: '#f0faff', border: '1.5px solid #38bdf8', color: '#38bdf8', borderRadius: 4, fontWeight: 600, fontSize: 14, padding: '4px 12px', cursor: 'pointer', marginTop: 2, alignSelf: 'flex-start' }}>+ Add bullet point</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Placeholder preview for Standard Single Image & Sidebar
+function StandardSingleImageSidebarPreview({ data, previewImageUrls }) {
+  return (
+    <div style={{ margin: '24px 0', maxWidth: 900 }}>
+      {/* Title removed as requested */}
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ width: 180, minWidth: 180, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {data.leftImgUrl && <img src={data.leftImgUrl} alt="Left" style={{ width: 180, height: 240, objectFit: 'contain', borderRadius: 8, background: '#fff' }} />}
+        </div>
+        <div style={{ flex: 2, minWidth: 320 }}>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{data.centerHeadline}</div>
+          <div style={{ fontSize: 15, color: '#64748b', marginBottom: 4 }}>{data.centerSubHeadline}</div>
+          <div style={{ fontSize: 14, fontFamily: 'Arial, sans-serif', margin: '0px 0px 14px', textAlign: 'left' }}>{data.centerBody}</div>
+          {/* Render bullet points as plain text, not as a list */}
+          {(data.centerBullets || []).filter(Boolean).map((b, idx) => (
+            <div key={idx} style={{ fontSize: 14, fontFamily: 'Arial, sans-serif', margin: '0px', textAlign: 'left' }}>{b}</div>
+          ))}
+        </div>
+        <div style={{ width: 220, minWidth: 220, display: 'flex', flexDirection: 'column', alignItems: 'center', borderLeft: '1.5px solid #e0e7ef', paddingLeft: 18 }}>
+          {data.rightImgUrl && <img src={data.rightImgUrl} alt="Right" style={{ width: 180, height: 90, objectFit: 'contain', borderRadius: 8, background: '#fff', marginBottom: 8 }} />}
+          <div style={{ fontWeight: 600, fontSize: 17, fontFamily: 'Arial, sans-serif', margin: '0px 0px 6px', textAlign: 'left', width: '100%' }}>{data.rightHeadline}</div>
+          <div style={{ fontSize: 14, fontFamily: 'Arial, sans-serif', margin: '0px 0px 14px', textAlign: 'left', width: '100%' }}>{data.rightBody}</div>
+          <ul style={{ margin: 0, paddingLeft: 18, textAlign: 'left' }}>
+            {(data.rightBullets || []).filter(Boolean).map((b, idx) => <li key={idx} style={{ fontSize: 14 }}>{b}</li>)}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Add this component for the Standard Comparison Chart module
+function StandardComparisonChartModule({ data, onChange, onDelete, onMoveUp, onMoveDown, moduleIndex, modulesLength }) {
+  // State for products and metrics
+  const maxProducts = 6;
+  const maxMetrics = 10;
+  const [products, setProducts] = useState(data.products || Array(maxProducts).fill({ asin: '', img: '', title: '', highlight: false }));
+  const [metrics, setMetrics] = useState(data.metrics || Array(maxMetrics).fill(''));
+  const [showReviews, setShowReviews] = useState(data.showReviews ?? true);
+  const [showPrices, setShowPrices] = useState(data.showPrices ?? true);
+  const [showAddToBasket, setShowAddToBasket] = useState(data.showAddToBasket ?? true);
+
+  // Handlers for product fields
+  function handleProductChange(idx, field, value) {
+    const arr = products.map((p, i) => i === idx ? { ...p, [field]: value } : p);
+    setProducts(arr);
+    onChange({ ...data, products: arr });
+  }
+  function handleProductImage(idx, file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      handleProductChange(idx, 'img', ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  }
+  function handleProductClear(idx) {
+    const arr = products.map((p, i) => i === idx ? { asin: '', img: '', title: '', highlight: false } : p);
+    setProducts(arr);
+    onChange({ ...data, products: arr });
+  }
+  function handleHighlight(idx, value) {
+    handleProductChange(idx, 'highlight', value);
+  }
+
+  // Handlers for metrics
+  function handleMetricChange(idx, value) {
+    const arr = metrics.map((m, i) => i === idx ? value : m);
+    setMetrics(arr);
+    onChange({ ...data, metrics: arr });
+  }
+
+  // Removed toggle handlers as the checkboxes have been removed
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, padding: '32px', marginBottom: 36, maxWidth: 1200, width: '100%', position: 'relative', border: '1.5px solid #e0e7ef' }}>
+      {/* Top right controls */}
+      <div style={{ position: 'absolute', top: 14, right: 18, display: 'flex', gap: 4, zIndex: 10 }}>
+        <button className="acm-module-move" title="Move Up" onClick={onMoveUp} disabled={!onMoveUp} style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveUp ? 'pointer' : 'not-allowed' }}>&uarr;</button>
+        <button className="acm-module-move" title="Move Down" onClick={onMoveDown} disabled={!onMoveDown} style={{ fontSize: '1.2rem', padding: '0 8px', color: '#64748b', background: 'none', border: 'none', cursor: onMoveDown ? 'pointer' : 'not-allowed' }}>&darr;</button>
+        <button className="acm-module-delete" onClick={onDelete} title="Delete" style={{ fontSize: '1.5rem', color: '#b12704', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 20, color: '#23272f', marginBottom: 18 }}>Standard Comparison Chart</div>
+      <div style={{ marginBottom: 12, fontWeight: 600 }}>Comparison Products (6 max / 2 min)</div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+        {products.map((p, idx) => (
+          <div key={idx} style={{ flex: 1, minWidth: 120, maxWidth: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', border: '1.5px solid #e0e7ef', borderRadius: 8, padding: 8, background: p.highlight ? '#f0faff' : '#fff' }}>
+            <button type="button" onClick={() => handleProductClear(idx)} style={{ alignSelf: 'flex-end', background: '#e0e7ef', border: 'none', borderRadius: 4, color: '#b12704', fontWeight: 700, fontSize: 13, width: 36, height: 24, cursor: 'pointer', marginBottom: 4 }}>Clear</button>
+            <input type="text" value={p.asin} onChange={e => handleProductChange(idx, 'asin', e.target.value)} placeholder="Enter ASIN" style={{ width: '100%', fontSize: 13, padding: 4, borderRadius: 4, border: '1.5px solid #e0e7ef', marginBottom: 4 }} />
+            <div style={{ border: '2px dashed #38bdf8', borderRadius: 10, background: '#f0faff', width: 90, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4, position: 'relative', cursor: 'pointer', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => document.getElementById(`cmp-img-upload-${data.id}-${idx}`).click()}>
+              {p.img ? (
+                <img src={p.img} alt={`Product ${idx+1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+              ) : (
+                <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>
+                  <div style={{ fontSize: 24, marginBottom: 2 }}>📷</div>
+                  <div style={{ fontSize: 13 }}>150:300</div>
+                  <div style={{ fontSize: 12 }}>Click to add image</div>
+                </div>
+              )}
+              <input id={`cmp-img-upload-${data.id}-${idx}`} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleProductImage(idx, e.target.files[0])} />
+            </div>
+            <input type="text" value={p.title} onChange={e => handleProductChange(idx, 'title', e.target.value)} placeholder="Enter title" style={{ width: '100%', fontSize: 13, padding: 4, borderRadius: 4, border: '1.5px solid #e0e7ef', marginBottom: 4 }} />
+            <label style={{ fontSize: 12, marginBottom: 2 }}><input type="checkbox" checked={!!p.highlight} onChange={e => handleHighlight(idx, e.target.checked)} style={{ marginRight: 4 }} /> Highlight column</label>
+          </div>
+        ))}
+      </div>
+      {/* Remove the Comparison Metrics heading below */}
+      {/* <div style={{ fontWeight: 600, marginBottom: 8 }}>Comparison Metrics (10 max / 1 min)</div> */}
+    
+    </div>
+  );
+}
+
+// Preview for Standard Comparison Chart
+function StandardComparisonChartPreview({ data }) {
+  // Always render 6 columns
+  const maxProducts = 6;
+  let products = (data.products || []).slice(0, maxProducts);
+  while (products.length < maxProducts) {
+    products.push({ title: '', img: '', highlight: false });
+  }
+  // Button types (ensure same length as products)
+  const demoButtons = [
+    { type: 'add', label: 'Add to Cart' },
+    { type: 'buy', label: 'Buying Options' },
+    { type: 'buy', label: 'Buying Options' },
+    { type: 'add', label: 'Add to Cart' },
+    { type: 'buy', label: 'Buying Options' },
+    { type: 'buy', label: 'Buying Options' },
+  ];
+  // Demo data for preview
+  const demoColors = ['Black', 'Black', 'Black & Purple', 'Black', 'Black', 'Black'];
+  const demoMaterials = ['Pine Wood', 'Pine Wood', 'Pine Wood', 'Pine Wood', 'Pine Wood', 'Pine Wood'];
+  const demoSizes = ['13.5"x13.5"x3.5"', '16"x16"x2.5"', '17"x10.5"', '18"x13"x3"', '5.5"x2.5"x0.5"', '16"x16"x2.5"'];
+  const demoBrands = ['Ella & Emma', 'Ella & Emma', 'Ella & Emma', 'Ella & Emma', 'Ella & Emma', 'Ella & Emma'];
+  const demoGothic = [true, true, true, true, true, true];
+  const demoCrystals = [true, true, false, true, false, true];
+  const demoEssential = [true, false, false, false, false, false];
+  const demoMounting = ['Wall mount', 'Wall mount', 'DeskTop', 'Wall Mount/Desktop', 'Wall mount', 'Wall mount'];
+  const demoImgs = products.map(p => p.img);
+  
+  // Table row helper function
+  // Table row helper
+  function row(label, arr, opts = {}) {
+    return (
+      <tr>
+        <td style={{ background: opts.blue ? '#eaf4fb' : '#f8fafc', fontWeight: opts.bold ? 600 : 500, textAlign: 'left', padding: '10px 12px', borderRight: '2px solid #d1d5db', minWidth: 140, color: opts.blue ? '#2563eb' : '#23272f', fontSize: 15, borderBottom: '1.5px solid #e5e7eb', borderLeft: opts.blue ? '4px solid #2563eb' : undefined }}>{label}</td>
+        {arr.map((val, idx) => (
+          <td key={idx} style={{ textAlign: 'center', padding: '10px 12px', background: opts.blue ? '#fff' : '#fff', borderBottom: '1.5px solid #e5e7eb', fontSize: 16, fontWeight: opts.bold ? 600 : 500, color: opts.color || '#23272f', whiteSpace: 'nowrap' }}>{val}</td>
+        ))}
+      </tr>
+    );
+  }
+  return (
+    <div style={{ overflowX: 'auto', background: '#fff' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', fontFamily: 'Arial, sans-serif' }}>
+        <thead>
+          <tr>
+            <th style={{ background: '#fff', border: 'none', width: 180 }}></th>
+            {products.map((p, idx) => {
+              const btn = demoButtons[idx] || { type: 'buy', label: 'Buying Options' };
+              return (
+                <th key={idx} style={{ textAlign: 'center', background: '#fff', border: 'none', minWidth: 170, maxWidth: 200, padding: '12px 8px 0 8px' }}>
+                  {p.img && <img src={p.img} alt={p.title} style={{ width: 150, height: 300, objectFit: 'contain', marginBottom: 6, display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />}
+                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6, color: '#2563eb', minHeight: 44 }}>{p.title}</div>
+                  {btn.type === 'add' ? (
+                    <button style={{ background: '#ffd700', color: '#23272f', border: 'none', borderRadius: 4, fontWeight: 600, fontSize: 15, padding: '6px 18px', marginBottom: 8, cursor: 'pointer', boxShadow: '0 1px 2px #e5e7eb' }}>{btn.label}</button>
+                  ) : (
+                    <button style={{ background: '#fff', color: '#23272f', border: '1.5px solid #23272f', borderRadius: 4, fontWeight: 600, fontSize: 15, padding: '6px 18px', marginBottom: 8, cursor: 'pointer' }}>{btn.label}</button>
+                  )}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {row('Colour', demoColors)}
+          {row('Materials', demoMaterials)}
+          {row('Size', demoSizes)}
+          {row('Brand', demoBrands)}
+          {row('Gothic Decor', demoGothic.map((v, i) => <span key={`gothic-${i}`} style={{ fontSize: 20, color: '#0593b2' }}>{v ? '✓' : '—'}</span>))}
+          {row('Crystals Shelf', demoCrystals.map((v, i) => <span key={`crystals-${i}`} style={{ fontSize: 20, color: v ? '#0593b2' : '#64748b' }}>{v ? '✓' : '—'}</span>))}
+          {row('Essential Oil Shelf', demoEssential.map((v, i) => <span key={`essential-${i}`} style={{ fontSize: 20, color: v ? '#0593b2' : '#64748b' }}>{v ? '✓' : '—'}</span>))}
+          {row('Mounting Type', demoMounting.map((mt, i) => <span key={`mount-${i}`}>{mt}</span>))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PremiumContentEditPage() {
+  const { id } = useParams();
+  // Set initial tab to 'preview' if loading an existing draft, otherwise 'editor'
+  const [tab, setTab] = useState(id ? 'preview' : 'editor');
+  const [contentName, setContentName] = useState('');
+  const [modules, setModules] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [editingModuleId, setEditingModuleId] = useState(null);
+  const navigate = useNavigate();
+  const isAddModuleDisabled = !contentName || modules.length >= 7;
+
+  // 1. Add previewMode state, default to 'desktop'
+  const [previewMode, setPreviewMode] = useState('desktop');
+
+  // 2. Add useEffect to reset previewMode to 'desktop' when switching to Preview tab
+  useEffect(() => {
+    if (tab === 'preview') {
+      setPreviewMode('desktop');
+    }
+  }, [tab]);
+
+  // Add state to cache preview image URLs for each module
+  const [previewImageUrls, setPreviewImageUrls] = useState({});
+
+  useEffect(() => {
+    async function loadPreviewImages() {
+      const urls = {};
+      for (const mod of modules) {
+        // Handle Premium Navigation Carousel module images
+        if (mod.id && (mod.id === 'premium-navigation-carousel' || mod.type === 'premium-navigation-carousel')) {
+          await Promise.all(
+            (mod.panels || []).map(async (panel, panelIdx) => {
+              if (panel.image && !panel.image.startsWith('data:')) {
+                urls[`${mod.id}_panel_${panelIdx}`] = await acmDB.getImage(panel.image);
+              } else {
+                urls[`${mod.id}_panel_${panelIdx}`] = panel.image || '';
+              }
+            })
+          );
+        }
+        
+        if (mod.id && (mod.id === 'premium-background-image' || mod.type === 'premium-background-image')) {
+          if (mod.backgroundImage && !mod.backgroundImage.startsWith('data:')) {
+            urls[`${mod.id}_background`] = await acmDB.getImage(mod.backgroundImage);
+          } else {
+            urls[`${mod.id}_background`] = mod.backgroundImage || '';
+          }
+        }
+        if (mod.id && (mod.id === 'premium-full-image' || mod.type === 'premium-full-image')) {
+          if (mod.desktopImage && !mod.desktopImage.startsWith('data:')) {
+            urls[mod.id + '_desktop'] = await acmDB.getImage(mod.desktopImage);
+          } else {
+            urls[mod.id + '_desktop'] = mod.desktopImage || '';
+          }
+          if (mod.mobileImage && !mod.mobileImage.startsWith('data:')) {
+            urls[mod.id + '_mobile'] = await acmDB.getImage(mod.mobileImage);
+          } else {
+            urls[mod.id + '_mobile'] = mod.mobileImage || '';
+          }
+        }
+        if (mod.id && (mod.id === 'premium-four-images-text' || mod.type === 'premium-four-images-text')) {
+          // For each image slot, load and cache
+          await Promise.all(
+            (mod.images || [ '', '', '', '' ]).map(async (imgId, idx) => {
+              if (imgId && !imgId.startsWith('data:')) {
+                urls[mod.id + '_four_' + idx] = await acmDB.getImage(imgId);
+              } else {
+                urls[mod.id + '_four_' + idx] = imgId || '';
+              }
+            })
+          );
+        }
+        if (mod.id && (mod.id === 'premium-three-images-text' || mod.type === 'premium-three-images-text')) {
+          await Promise.all(
+            (mod.images || ['', '', '']).map(async (imgId, idx) => {
+              try {
+                if (imgId) {
+                  if (imgId.startsWith('data:') || imgId.startsWith('http')) {
+                    urls[mod.id + '_three_' + idx] = imgId;
+                  } else {
+                    const imageUrl = await acmDB.getImage(imgId);
+                    urls[mod.id + '_three_' + idx] = imageUrl || '';
+                  }
+                } else {
+                  urls[mod.id + '_three_' + idx] = '';
+                }
+              } catch (error) {
+                console.error(`Error loading image ${imgId} for module ${mod.id}:`, error);
+                urls[mod.id + '_three_' + idx] = '';
+              }
+            })
+          );
+        }
+        // Add this block for premium-single-left-image
+        if (mod.id && (mod.id === 'premium-single-left-image' || mod.type === 'premium-single-left-image')) {
+          if (mod.image && !mod.image.startsWith('data:')) {
+            urls[mod.id] = await acmDB.getImage(mod.image);
+          } else {
+            urls[mod.id] = mod.image || '';
+          }
+        }
+      }
+      setPreviewImageUrls(urls);
+    }
+    if (tab === 'preview' && modules.length > 0) {
+      loadPreviewImages();
+    }
+  }, [tab, modules]);
+
+  // Load draft when component mounts or ID changes
+  useEffect(() => {
+    async function loadDraft() {
+      if (!id) {
+        console.log('[useEffect] No draft ID provided, starting with new draft');
+        setTab('editor'); // Show editor for new drafts
+        return;
+      }
+
+      console.log(`[useEffect] Loading draft with ID: ${id}`);
+      try {
+        // First try to load from Supabase
+        const allDrafts = await getDraftsFromSupabase('premium');
+        const draft = allDrafts.find(d => d.id === id);
+        
+        if (draft) {
+          console.log(`[useEffect] Loaded draft from Supabase:`, {
+            id: draft.id,
+            name: draft.contentName,
+            moduleCount: draft.modules?.length || 0
+          });
+          
+          setContentName(draft.contentName || '');
+          setModules(Array.isArray(draft.modules) ? draft.modules : []);
+          setTab('preview'); // Show preview for existing drafts
+        } else {
+          // Fallback to local database if not found in Supabase
+          console.log(`[useEffect] Draft not found in Supabase, trying local database`);
+          const localDraft = await acmDB.getDraft(id);
+          if (localDraft) {
+            console.log(`[useEffect] Loaded draft from local database`);
+            setContentName(localDraft.contentName || '');
+            setModules(Array.isArray(localDraft.modules) ? localDraft.modules : []);
+            setTab('preview'); // Show preview for existing drafts
+          } else {
+            console.warn(`[useEffect] Draft not found with ID: ${id}`);
+          }
+        }
+      } catch (error) {
+        console.error('[useEffect] Error loading draft:', {
+          error: error?.message,
+          stack: error?.stack
+        });
+        setSaveMsg('Error loading draft: ' + (error?.message || 'Unknown error'));
+        setTimeout(() => setSaveMsg(''), 3000);
+      }
+    }
+    
+    loadDraft();
+  }, [id]);
+
+  function handleAddModule() {
+    setShowModal(true);
+  }
+  function handleSelectModule(template) {
+    const newModuleId = uuidv4();
+    setModules([
+      ...modules,
+      { ...template, type: template.id, headline: '', body: '', desktopImage: '', mobileImage: '', id: newModuleId }
+    ]);
+    // Automatically open the editor for the newly added module
+    setEditingModuleId(newModuleId);
+    setShowModal(false);
+  }
+  function handleDeleteModule(id) {
+    setModules(modules => modules.filter(m => m.id !== id));
+  }
+  function handleModuleChange(id, newData) {
+    setModules(modules.map(m => m.id === id ? { ...m, ...newData } : m));
+  }
+  function handleMoveModuleUp(idx) {
+    if (idx <= 0) return;
+    setModules(mods => {
+      const arr = [...mods];
+      const temp = arr[idx-1];
+      arr[idx-1] = arr[idx];
+      arr[idx] = temp;
+      return arr;
+    });
+  }
+  function handleMoveModuleDown(idx) {
+    if (idx >= modules.length-1) return;
+    setModules(mods => {
+      const arr = [...mods];
+      const temp = arr[idx+1];
+      arr[idx+1] = arr[idx];
+      arr[idx] = temp;
+      return arr;
+    });
+  }
+  const [nameError, setNameError] = useState('');
+
+  // Check for duplicate name on contentName change
+  useEffect(() => {
+    if (!contentName) return;
+    acmDB.getAllDrafts().then(result => {
+      const exists = result.drafts.some(d => d.draftType === 'premium' && d.contentName === contentName && (!id || d.id !== id));
+      if (exists) {
+        setNameError('Name already taken, please choose a different name.');
+      } else {
+        setNameError('');
+      }
+    });
+  }, [contentName, id]);
+
+  useEffect(() => {
+    if (nameError) {
+      const timer = setTimeout(() => setNameError(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [nameError]);
+
+  async function handleSaveDraft() {
+    if (nameError) {
+      setSaveMsg(nameError);
+      setTimeout(() => setSaveMsg(''), 4000);
+      return;
+    }
+    
+    let name = prompt('Enter a name for this draft:', contentName || 'Untitled Draft');
+    if (!name) return;
+    
+    try {
+      // Check for duplicate name
+      const allDrafts = await getDraftsFromSupabase('premium');
+      const exists = allDrafts.some(d => d.contentName === name && (!id || d.id !== id));
+      if (exists) {
+        setSaveMsg('Name already taken, please choose a different name.');
+        setTimeout(() => setSaveMsg(''), 4000);
+        return;
+      }
+      
+      const draftId = id || uuidv4();
+      const now = new Date().toISOString();
+      
+      // Prepare the draft data with all required fields
+      const draftData = {
+        id: draftId,
+        contentName: name,
+        content_name: name, // Ensure both camelCase and snake_case for compatibility
+        modules: modules,
+        draftType: 'premium',
+        draft_type: 'premium', // Ensure both camelCase and snake_case
+        status: 'draft', // Use lowercase 'draft' to match enum constraint
+        created_at: id ? undefined : now, // Only set on create
+        updated_at: now,
+        metadata: {}
+      };
+      
+      console.log('Saving draft with data:', JSON.stringify(draftData, null, 2));
+      
+      // Save the draft
+      const savedDraft = await saveDraftToSupabase(draftData);
+      
+      // Update the URL with the new ID if this is a new draft
+      if (!id) {
+        window.history.pushState({}, '', `/premium-edit/${savedDraft.id}`);
+      }
+      
+      setSaveMsg('Draft saved successfully!');
+      setTimeout(() => setSaveMsg(''), 2000);
+      
+      // Update the content name in state
+      setContentName(name);
+      
+    } catch (error) {
+      console.error('Error saving draft:', {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        stringified: JSON.stringify(error)
+      });
+      setSaveMsg(`Error saving draft: ${error?.message || 'Unknown error'}`);
+      setTimeout(() => setSaveMsg(''), 4000);
+    }
+  }
+
+  const [drafts, setDrafts] = useState([]);
+
+  // Load all drafts metadata
+  useEffect(() => {
+    async function loadDrafts() {
+      try {
+        const allDrafts = await getDraftsFromSupabase('premium');
+        setDrafts(allDrafts);
+      } catch (error) {
+        setDrafts([]);
+      }
+    }
+    loadDrafts();
+  }, [saveMsg]);
+
+  async function handleLoadDraft(id) {
+    try {
+      console.log(`[handleLoadDraft] Loading draft with ID: ${id}`);
+      const allDrafts = await getDraftsFromSupabase('premium');
+      console.log(`[handleLoadDraft] Found ${allDrafts.length} premium drafts`);
+      
+      const draft = allDrafts.find(d => d.id === id);
+      if (!draft) {
+        throw new Error(`Draft with ID ${id} not found`);
+      }
+      
+      console.log('[handleLoadDraft] Found draft:', {
+        id: draft.id,
+        name: draft.contentName,
+        moduleCount: draft.modules?.length || 0,
+        type: draft.draftType
+      });
+      
+      // Update the URL to reflect the loaded draft
+      window.history.pushState({}, '', `/premium-edit/${draft.id}`);
+      
+      // Reset states before loading new data
+      setContentName(draft.contentName || '');
+      setModules(Array.isArray(draft.modules) ? draft.modules : []);
+      
+      // Close any open modals
+      setShowModal(false);
+      
+      // Show success message
+      setSaveMsg('Draft loaded successfully!');
+      setTimeout(() => setSaveMsg(''), 2000);
+      
+      // Log successful load
+      console.log('[handleLoadDraft] Draft loaded successfully');
+      
+    } catch (error) {
+      console.error('[handleLoadDraft] Error loading draft:', {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        stringified: JSON.stringify(error)
+      });
+      
+      setSaveMsg(`Error loading draft: ${error?.message || 'Unknown error'}`);
+      setTimeout(() => setSaveMsg(''), 4000);
+    }
+  }
+
+  async function handleDeleteDraft(id) {
+    try {
+      await deleteDraftFromSupabase(id);
+      const allDrafts = await getDraftsFromSupabase('premium');
+      setDrafts(allDrafts);
+    } catch (error) {
+      console.error('Error deleting draft:', error, error?.message, error?.stack, JSON.stringify(error));
+      alert('Error deleting draft: ' + (error?.message || JSON.stringify(error)));
+      setSaveMsg('Error deleting draft.');
+    }
+  }
+
+  const [showDraftsModal, setShowDraftsModal] = useState(false);
+  const [draftsTab, setDraftsTab] = useState('premium'); // 'basic' or 'premium'
+
+  return (
+    <div className="acm-edit-root">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginLeft: 32, marginTop: 24 }}>
+          <img src={controlaLogo} alt="Controla Logo" style={{ height: 32, marginRight: 14 }} />
+        </div>
+        <div className="acm-edit-header-actions" style={{ display: 'flex', gap: 12, marginTop: 24, marginRight: 60, position: 'static', top: 'auto', right: 'auto' }}>
+          <button className="acm-btn-cancel-modern" onClick={() => {
+            if (window.confirm('Are you sure you want to cancel? Unsaved changes will be lost.')) navigate('/');
+          }} style={{ padding: '6px 16px', fontSize: 14, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>Cancel</button>
+          <button
+            className="acm-btn-save rebuilt-save-draft"
+            style={{
+              background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+              color: '#fff',
+              padding: '6px 18px',
+              fontSize: 14,
+              borderRadius: 6,
+              marginLeft: 4,
+              cursor: 'pointer',
+              fontWeight: 700,
+              boxShadow: '0 2px 8px rgba(37,99,235,0.10)',
+              border: 'none',
+              outline: 'none',
+              transition: 'background 0.18s, box-shadow 0.18s',
+            }}
+            aria-label="Save as draft"
+            onClick={() => {
+              if (window.confirm('Do you want to save this draft?')) handleSaveDraft();
+            }}
+            onMouseOver={e => e.currentTarget.style.background = 'linear-gradient(90deg, #1d4ed8 0%, #60a5fa 100%)'}
+            onMouseOut={e => e.currentTarget.style.background = 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)'}
+          >
+            Save as draft
+          </button>
+          <button
+            className="acm-btn-save"
+            style={{ background: '#64748b', marginLeft: 8, padding: '6px 16px', fontSize: 14, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}
+            onClick={() => {
+              if (window.confirm('Open Manage Drafts? Unsaved changes will be lost.')) navigate('/premium-manage-drafts');
+            }}
+          >
+            Manage Drafts
+          </button>
+          <button className="acm-btn acm-btn-home" style={{marginLeft:8, padding: '6px 16px', fontSize: 14, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }} onClick={() => navigate('/')}>Home</button>
+          <button className="acm-btn acm-btn-back" style={{marginLeft:8, padding: '6px 16px', fontSize: 14, borderRadius: 6, cursor: 'pointer', fontWeight: 700 }} onClick={() => navigate('/get-started')}>Back</button>
+        </div>
+      </div>
+      {saveMsg && (
+        <div style={{
+          position: 'fixed',
+          top: 32,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#22c55e',
+          color: '#fff',
+          padding: '14px 36px',
+          borderRadius: 12,
+          fontWeight: 700,
+          fontSize: 18,
+          zIndex: 2000,
+          boxShadow: '0 4px 24px rgba(30,41,59,0.13)',
+          textAlign: 'center',
+          minWidth: 240
+        }}>
+          {saveMsg}
+        </div>
+      )}
+      {nameError && (
+        <div style={{
+          position: 'fixed',
+          top: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#f87171',
+          color: '#fff',
+          padding: '14px 36px',
+          borderRadius: 12,
+          fontWeight: 700,
+          fontSize: 18,
+          zIndex: 2000,
+          boxShadow: '0 4px 24px rgba(239,68,68,0.13)',
+          textAlign: 'center',
+          minWidth: 240
+        }}>
+          {nameError}
+        </div>
+      )}
+      {/* Content Details */}
+      <div className="acm-content-details">
+        <div className="acm-content-details-title">Premium Content details <span className="acm-best-practices">Best practices</span></div>
+        {/* Content Details Form */}
+        <div className="acm-content-details-form">
+          <div className="acm-form-row">
+            <label>Content name<span className="acm-required">*</span></label>
+            <input type="text" value={contentName} onChange={e => setContentName(e.target.value)} placeholder="Enter content name" />
+          </div>
+        </div>
+      </div>
+      {/* Tabs */}
+      <div className="acm-tabs">
+        <div className={`acm-tab ${tab === 'editor' ? 'active' : ''}`} onClick={() => setTab('editor')}>Editor</div>
+        <div className={`acm-tab ${tab === 'preview' ? 'active' : ''}`} onClick={() => setTab('preview')}>Preview</div>
+      </div>
+      {/* Module Area */}
+      <div className="acm-module-area" style={{flexDirection: 'column', alignItems: 'flex-start'}}>
+        {tab === 'editor' ? (
+          <>
+              {modules.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', margin: '32px 0' }}>
+                <div style={{ color: '#64748b', fontSize: '1.05rem', textAlign: 'center', marginBottom: 18 }}>
+                  No modules added yet.
+                </div>
+                <button
+                  className="acm-btn-add-module"
+                  disabled={isAddModuleDisabled}
+                  style={{
+                    background: isAddModuleDisabled ? '#c7d7fa' : 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+                    color: isAddModuleDisabled ? '#fff' : '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 18,
+                    padding: '12px 36px',
+                    cursor: isAddModuleDisabled ? 'not-allowed' : 'pointer',
+                    boxShadow: isAddModuleDisabled ? 'none' : '0 2px 8px rgba(37,99,235,0.10)',
+                    transition: 'background 0.18s, color 0.18s',
+                    opacity: isAddModuleDisabled ? 0.6 : 1,
+                    marginTop: 0
+                  }}
+                  onClick={handleAddModule}
+                >
+                  Add Module
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {modules.map((mod, idx) => {
+                    if (mod.id && (mod.id === 'premium-regimen-carousel' || mod.type === 'premium-regimen-carousel')) {
+                      return (
+                        <PremiumRegimenCarousel
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                          showHeader={true}
+                          onCancel={() => setEditingModuleId(null)}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-navigation-carousel' || mod.type === 'premium-navigation-carousel')) {
+                      return (
+                        <PremiumNavigationCarouselModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-background-image' || mod.type === 'premium-background-image')) {
+                      // Only show the module if it's being edited
+                      if (editingModuleId === mod.id) {
+                        return (
+                          <PremiumBackgroundImageModule
+                            key={mod.id}
+                            data={mod}
+                            onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                            onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                            onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                            onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                            moduleIndex={idx}
+                            modulesLength={modules.length}
+                            showHeader={true}
+                            onCancel={() => setEditingModuleId(null)}
+                          />
+                        );
+                      }
+                      return null; // Don't render anything when not editing
+                    }
+                    if (mod.id && (mod.id === 'premium-simple-image-carousel' || mod.type === 'premium-simple-image-carousel')) {
+                      return (
+                        <PremiumSimpleImageCarousel
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-full-image' || mod.type === 'premium-full-image')) {
+                      return (
+                        <PremiumFullImageModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-four-images-text' || mod.type === 'premium-four-images-text')) {
+                      return (
+                        <PremiumFourImagesTextModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                          setPreviewImageUrls={setPreviewImageUrls}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-three-images-text' || mod.type === 'premium-three-images-text')) {
+                      return (
+                        <PremiumThreeImagesTextModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'premium-single-left-image' || mod.type === 'premium-single-left-image')) {
+                      return (
+                        <PremiumSingleLeftImageModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'standard-single-image-sidebar' || mod.type === 'standard-single-image-sidebar')) {
+                      return (
+                        <StandardSingleImageSidebarModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    if (mod.id && (mod.id === 'standard-comparison-chart' || mod.type === 'standard-comparison-chart')) {
+                      return (
+                        <StandardComparisonChartModule
+                          key={mod.id}
+                          data={mod}
+                          onChange={newData => setModules(modules => modules.map(m => m.id === mod.id ? { ...m, ...newData } : m))}
+                          onDelete={() => setModules(modules => modules.filter(m => m.id !== mod.id))}
+                          onMoveUp={idx > 0 ? () => handleMoveModuleUp(idx) : undefined}
+                          onMoveDown={idx < modules.length-1 ? () => handleMoveModuleDown(idx) : undefined}
+                          moduleIndex={idx}
+                          modulesLength={modules.length}
+                        />
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', margin: '32px 0' }}>
+                  <button
+                    className="acm-btn-add-module"
+                    disabled={isAddModuleDisabled}
+                    style={{
+                      background: isAddModuleDisabled ? '#c7d7fa' : 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+                      color: isAddModuleDisabled ? '#fff' : '#fff',
+                      border: 'none',
+                      borderRadius: 8,
+                      fontWeight: 600,
+                      fontSize: 18,
+                      padding: '12px 36px',
+                      cursor: isAddModuleDisabled ? 'not-allowed' : 'pointer',
+                      boxShadow: isAddModuleDisabled ? 'none' : '0 2px 8px rgba(37,99,235,0.10)',
+                      transition: 'background 0.18s, color 0.18s',
+                      opacity: isAddModuleDisabled ? 0.6 : 1,
+                      marginTop: 0
+                    }}
+                    onClick={handleAddModule}
+                  >
+                    Add Module
+                  </button>
+                </div>
+              </>
+            )}
+            {showModal && (
+              <ModuleSelectModal
+                templates={PREMIUM_MODULE_TEMPLATES}
+                onSelect={handleSelectModule}
+                onClose={() => setShowModal(false)}
+              />
+            )}
+          </>
+        ) : (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'transparent', padding: '0' }}>
+            {/* Preview Bar */}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 0 16px 0' }}>
+              <button
+                style={{
+                  background: previewMode === 'mobile' ? '#fff' : '#f3f4f6',
+                  color: previewMode === 'mobile' ? '#23272f' : '#64748b',
+                  border: 'none',
+                  borderRadius: '8px 0 0 8px',
+                  padding: '8px 28px',
+                  fontWeight: previewMode === 'mobile' ? 700 : 600,
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  borderRight: '1.5px solid #e5e7eb',
+                }}
+                onClick={() => setPreviewMode('mobile')}
+              >Mobile</button>
+              <button
+                style={{
+                  background: previewMode === 'desktop' ? '#fff' : '#f3f4f6',
+                  color: previewMode === 'desktop' ? '#23272f' : '#64748b',
+                  border: 'none',
+                  borderRadius: '0 8px 8px 0',
+                  padding: '8px 28px',
+                  fontWeight: previewMode === 'desktop' ? 700 : 600,
+                  fontSize: 16,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  borderLeft: '1.5px solid #e5e7eb',
+                  boxShadow: previewMode === 'desktop' ? '0 2px 8px rgba(30,41,59,0.04)' : 'none',
+                  textShadow: previewMode === 'desktop' ? '0 1px 0 #fff' : 'none',
+                }}
+                onClick={() => setPreviewMode('desktop')}
+              >Desktop</button>
+            </div>
+            {previewMode === 'desktop' && (
+              modules.length === 0 ? (
+                <div key="no-modules-desktop" style={{color: '#64748b', fontSize: '1.05rem', padding: '20px 0' }}>No modules to preview.</div>
+              ) : (
+                <div key="desktop-preview-container" className="preview-container">
+                  {modules.map((mod, idx) => {
+                if (mod && (mod.id === 'premium-regimen-carousel' || mod.type === 'premium-regimen-carousel')) {
+                  console.log('Rendering PremiumRegimenCarousel with data:', {
+                    mod: { ...mod, panels: mod.panels ? `${mod.panels.length} panels` : 'no panels' },
+                    previewImageUrls: previewImageUrls ? Object.keys(previewImageUrls) : 'No previewImageUrls',
+                    modId: mod.id,
+                    idx
+                  });
+                  
+                  // Ensure panels array exists and has items
+                  const previewData = {
+                    ...mod,
+                    panels: Array.isArray(mod.panels) && mod.panels.length > 0 
+                      ? mod.panels 
+                      : [{
+                          id: 'default-panel-1',
+                          title: 'Your Panel Title',
+                          text: '<p>Add your panel content here</p>',
+                          image: '',
+                          navigationText: 'Step 1'
+                        }]
+                  };
+                  
+                  return (
+                    <div className="module-preview" style={{ maxWidth: '1464px', margin: '0 auto', width: '100%' }}>
+                      <PremiumRegimenCarouselView 
+                        key={mod.id || `regimen-${idx}`}
+                        data={previewData}
+                        previewImageUrls={previewImageUrls}
+                        mode="desktop"
+                      />
+                    </div>
+                  );
+                }
+                if (mod && (mod.id === 'premium-navigation-carousel' || mod.type === 'premium-navigation-carousel')) {
+                  return (
+                    <div className="module-preview">
+                      <PremiumNavigationCarouselPreview 
+                        key={mod.id || `nav-carousel-${idx}`} 
+                        data={mod} 
+                        previewImageUrls={previewImageUrls} 
+                        mode="desktop"
+                      />
+                    </div>
+                  );
+                }
+                if (mod && (mod.id === 'premium-background-image' || mod.type === 'premium-background-image')) {
+                  console.log('Rendering PremiumBackgroundImagePreview with data:', {
+                    mod: { 
+                      ...mod, 
+                      backgroundImage: mod.backgroundImage ? 
+                        (typeof mod.backgroundImage === 'string' ? 
+                          (mod.backgroundImage.length > 50 ? 
+                            `${mod.backgroundImage.substring(0, 50)}...` : 
+                            mod.backgroundImage) : 
+                          '[Object]') : 
+                        'undefined' 
+                    },
+                    previewImageUrls: previewImageUrls ? Object.keys(previewImageUrls) : 'No previewImageUrls',
+                    modId: mod.id,
+                    idx
+                  });
+                  
+                  // Create preview data with all necessary fields
+                  const previewData = {
+                    ...mod,
+                    // Include all text content
+                    headline: mod.headline || 'Your Headline Here',
+                    subheadline: mod.subheadline || 'Category Tag',
+                    body: mod.body || 'Your descriptive text goes here. This is a preview of how your content will look with the selected background image.',
+                    fontColor: mod.fontColor || '#ffffff',
+                    textAlignment: mod.textAlignment || 'left',
+                    // Pass through the background image as is - let the preview component handle it
+                    backgroundImage: mod.backgroundImage
+                  };
+                  
+                  return (
+                    <div className="module-preview" style={{ width: '100%', maxWidth: '1464px', margin: '0 auto' }}>
+                      <PremiumBackgroundImagePreview 
+                        key={mod.id || `bg-image-${idx}`} 
+                        data={previewData} 
+                        previewImageUrls={previewImageUrls} 
+                        mode="desktop" 
+                      />
+                    </div>
+                  );
+                }
+                if (mod && (mod.id === 'premium-simple-image-carousel' || mod.type === 'premium-simple-image-carousel')) {
+                  return (
+                    <div className="module-preview">
+                      <PremiumSimpleImageCarouselPreview
+                        key={mod.id || `simple-carousel-${idx}`}
+                        data={mod}
+                        previewImageUrls={previewImageUrls}
+                        mode="desktop"
+                      />
+                    </div>
+                  );
+                }
+                if (mod.id && (mod.id === 'premium-full-image' || mod.type === 'premium-full-image')) {
+                  return (
+                    <div key={mod.id} style={{ width: '100%', marginBottom: '24px' }}>
+                      <PremiumFullImagePreview 
+                        data={mod} 
+                        previewImageUrls={previewImageUrls} 
+                        mode="desktop"
+                      />
+                    </div>
+                  );
+                }
+                  if (mod.id && (mod.id === 'premium-four-images-text' || mod.type === 'premium-four-images-text')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumFourImagesTextPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} mode="desktop" />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'premium-three-images-text' || mod.type === 'premium-three-images-text')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumThreeImagesTextPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} mode="desktop" />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'premium-single-left-image' || mod.type === 'premium-single-left-image')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumSingleLeftImagePreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'standard-single-image-sidebar' || mod.type === 'standard-single-image-sidebar')) {
+                    return (
+                      <div className="module-preview">
+                        <StandardSingleImageSidebarPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'standard-comparison-chart' || mod.type === 'standard-comparison-chart')) {
+                    return (
+                      <div className="module-preview">
+                        <StandardComparisonChartPreview key={mod.id} data={mod} />
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+                </div>
+              )
+            )}
+            {previewMode === 'mobile' && (
+              modules.length === 0 ? (
+                <div key="no-modules-mobile" style={{color: '#64748b', fontSize: '1.05rem'}}>No modules to preview.</div>
+              ) : (
+                <div key="mobile-preview-container" className="preview-container">
+                  {modules.map((mod, idx) => {
+                  if (mod && (mod.id === 'premium-regimen-carousel' || mod.type === 'premium-regimen-carousel')) {
+                    console.log('Rendering Mobile PremiumRegimenCarousel with data:', {
+                      mod: { ...mod, panels: mod.panels ? `${mod.panels.length} panels` : 'no panels' },
+                      previewImageUrls: previewImageUrls ? Object.keys(previewImageUrls) : 'No previewImageUrls',
+                      modId: mod.id,
+                      idx
+                    });
+                    
+                    // Ensure panels array exists and has items for mobile
+                    const previewData = {
+                      ...mod,
+                      panels: Array.isArray(mod.panels) && mod.panels.length > 0 
+                        ? mod.panels 
+                        : [{
+                            id: 'default-panel-1',
+                            title: 'Your Panel Title',
+                            text: '<p>Add your panel content here</p>',
+                            image: '',
+                            navigationText: 'Step 1'
+                          }]
+                    };
+                    
+                    return (
+                      <div className="module-preview" style={{ maxWidth: '375px', margin: '0 auto', width: '100%' }}>
+                        <PremiumRegimenCarouselView 
+                          key={mod.id || `regimen-mobile-${idx}`}
+                          data={previewData}
+                          previewImageUrls={previewImageUrls}
+                          mode="mobile"
+                        />
+                      </div>
+                    );
+                  }
+                if (mod && (mod.id === 'premium-navigation-carousel' || mod.type === 'premium-navigation-carousel')) {
+                  return (
+                    <div className="module-preview">
+                      <PremiumNavigationCarouselPreview 
+                        key={mod.id || `nav-carousel-mobile-${idx}`} 
+                        data={mod} 
+                        previewImageUrls={previewImageUrls} 
+                        mode="mobile"
+                      />
+                    </div>
+                  );
+                }
+                  if (mod && (mod.id === 'premium-background-image' || mod.type === 'premium-background-image')) {
+                    console.log('Rendering Mobile PremiumBackgroundImagePreview with data:', {
+                      mod: { 
+                        ...mod, 
+                        backgroundImage: mod.backgroundImage ? 
+                          (typeof mod.backgroundImage === 'string' ? 
+                            (mod.backgroundImage.length > 50 ? 
+                              `${mod.backgroundImage.substring(0, 50)}...` : 
+                              mod.backgroundImage) : 
+                            '[Object]') : 
+                          'undefined' 
+                      },
+                      previewImageUrls: previewImageUrls ? Object.keys(previewImageUrls) : 'No previewImageUrls',
+                      modId: mod.id,
+                      idx
+                    });
+                    
+                    // Create preview data with all necessary fields
+                    const previewData = {
+                      ...mod,
+                      // Include all text content
+                      headline: mod.headline || 'Your Headline Here',
+                      subheadline: mod.subheadline || 'Category Tag',
+                      body: mod.body || 'Your descriptive text goes here. This is a preview of how your content will look with the selected background image.',
+                      fontColor: mod.fontColor || '#ffffff',
+                      textAlignment: mod.textAlignment || 'left',
+                      // Pass through the background image as is - let the preview component handle it
+                      backgroundImage: mod.backgroundImage
+                    };
+                    
+                    return (
+                      <div className="module-preview" key={mod.id || `mobile-bg-image-${idx}`} style={{ width: '100%', maxWidth: '600px', margin: '0 auto' }}>
+                        <PremiumBackgroundImagePreview 
+                          data={previewData} 
+                          previewImageUrls={previewImageUrls} 
+                          mode="mobile" 
+                        />
+                      </div>
+                    );
+                  }
+                  if (mod && (mod.id === 'premium-simple-image-carousel' || mod.type === 'premium-simple-image-carousel')) {
+                    return (
+                      <div className="module-preview" key={mod.id || `mobile-simple-carousel-${idx}`}>
+                        <div style={{ width: '100%', maxWidth: 375, margin: '0 auto' }}>
+                          <PremiumSimpleImageCarouselPreview
+                            data={mod}
+                            previewImageUrls={previewImageUrls}
+                            mode="mobile"
+                          />
+                        </div>
+                      </div>
+                    );
+                  }  
+                  if (mod.id && (mod.id === 'premium-full-image' || mod.type === 'premium-full-image')) {
+                    return (
+                      <div key={mod.id} style={{ width: '100%', marginBottom: '24px' }}>
+                        <PremiumFullImagePreview 
+                          data={mod} 
+                          previewImageUrls={previewImageUrls} 
+                          mode="mobile"
+                        />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'premium-four-images-text' || mod.type === 'premium-four-images-text')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumFourImagesTextPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} mode="mobile" />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'premium-three-images-text' || mod.type === 'premium-three-images-text')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumThreeImagesTextPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} mode="mobile" />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'premium-single-left-image' || mod.type === 'premium-single-left-image')) {
+                    return (
+                      <div className="module-preview">
+                        <PremiumSingleLeftImagePreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'standard-single-image-sidebar' || mod.type === 'standard-single-image-sidebar')) {
+                    return (
+                      <div className="module-preview">
+                        <StandardSingleImageSidebarPreview key={mod.id} data={mod} previewImageUrls={previewImageUrls} />
+                      </div>
+                    );
+                  }
+                  if (mod.id && (mod.id === 'standard-comparison-chart' || mod.type === 'standard-comparison-chart')) {
+                    return (
+                      <div className="module-preview">
+                        <StandardComparisonChartPreview key={mod.id} data={mod} />
+                      </div>
+                    );
+                  }
+                return null;
+              })}
+              </div>
+            )
+          )}
+          </div>
+        )}
+      </div>
+      {showDraftsModal && (
+        <div className="acm-modal-overlay">
+          <div className="acm-drafts-modal">
+            <div className="acm-drafts-header">
+              <span className="acm-drafts-title">Manage Drafts</span>
+              <button className="acm-drafts-close" onClick={() => setShowDraftsModal(false)}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 24, padding: '0 32px', marginTop: 12, marginBottom: 8 }}>
+              <span
+                style={{ color: draftsTab === 'basic' ? '#2563eb' : '#64748b', fontWeight: draftsTab === 'basic' ? 600 : 500, borderBottom: draftsTab === 'basic' ? '2.5px solid #2563eb' : 'none', paddingBottom: 4, cursor: 'pointer' }}
+                onClick={() => setDraftsTab('basic')}
+              >Basic</span>
+              <span
+                style={{ color: draftsTab === 'premium' ? '#2563eb' : '#64748b', fontWeight: draftsTab === 'premium' ? 600 : 500, borderBottom: draftsTab === 'premium' ? '2.5px solid #2563eb' : 'none', paddingBottom: 4, cursor: 'pointer' }}
+                onClick={() => setDraftsTab('premium')}
+              >Premium</span>
+            </div>
+            <ManageDraftsModal
+              drafts={drafts.filter(d => (draftsTab === 'premium' ? d.draftType === 'premium' : !d.draftType || d.draftType === 'basic'))}
+              onLoad={handleLoadDraft}
+              onDelete={handleDeleteDraft}
+              onClose={() => setShowDraftsModal(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default PremiumContentEditPage; 

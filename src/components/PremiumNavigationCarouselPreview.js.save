@@ -1,0 +1,480 @@
+import React, { useState, useRef } from 'react';
+import '../css/PremiumNavigationCarousel.css';
+
+const PremiumNavigationCarouselPreview = ({ 
+  data = {}, 
+  previewImageUrls, 
+  mode = 'desktop', 
+  onImageChange, 
+  onPanelRemove, 
+  onPanelMove, 
+  activePanelIndex = 0, 
+  onPanelClick,
+  previewMode = false 
+}) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [touchEndX, setTouchEndX] = useState(0);
+  
+  const fileInputRef = useRef(null);
+  
+  // Ensure data has panels array
+  const safeData = {
+    ...data,
+    panels: Array.isArray(data?.panels) ? data.panels : []
+  };
+  
+  const goToSlide = (index) => {
+    setActiveIndex(index);
+    if (onPanelClick) onPanelClick(index);
+  };
+  
+  const goToPrev = () => {
+    const newIndex = activeIndex === 0 ? safeData.panels.length - 1 : activeIndex - 1;
+    setActiveIndex(newIndex);
+    if (onPanelClick) onPanelClick(newIndex);
+  };
+  
+  const goToNext = () => {
+    const newIndex = activeIndex === safeData.panels.length - 1 ? 0 : activeIndex + 1;
+    setActiveIndex(newIndex);
+    if (onPanelClick) onPanelClick(newIndex);
+  };
+  
+  const handleFileInputChange = (e, index) => {
+    const file = e.target.files?.[0];
+    if (file && onImageChange) {
+      handleImageUpload(file, index);
+    }
+    // Reset file input
+    e.target.value = null;
+  };
+  
+  const handleRemovePanel = (e, index) => {
+    e.stopPropagation();
+    if (onPanelRemove) onPanelRemove(index);
+    // Adjust active index if needed
+    if (index === activeIndex && index > 0) {
+      setActiveIndex(index - 1);
+      if (onPanelClick) onPanelClick(index - 1);
+    }
+  };
+  
+  const handleMovePanel = (e, fromIndex, direction) => {
+    e.stopPropagation();
+    if (onPanelMove) onPanelMove(fromIndex, direction);
+  };
+  
+  const triggerFileInput = (e, index) => {
+    e.stopPropagation();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => handleFileInputChange(e, index);
+    input.click();
+  };
+  
+  const panel = safeData.panels[activeIndex] || {};
+  const minDimensions = { width: 1464, height: 600 }; // Minimum dimensions for desktop
+  
+  // Handle touch events for mobile swipe
+  const handleTouchStart = (e) => {
+    setTouchStartX(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEndX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    
+    const difference = touchStartX - touchEndX;
+    const swipeThreshold = 50; // Minimum distance to trigger swipe
+    
+    if (Math.abs(difference) > swipeThreshold) {
+      if (difference > 0) {
+        // Swipe left - go to next
+        goToNext();
+      } else {
+        // Swipe right - go to previous
+        goToPrev();
+      }
+    }
+    
+    // Reset touch positions
+    setTouchStartX(0);
+    setTouchEndX(0);
+  };
+
+  // Handle image upload
+  const handleImageUpload = async (file, index) => {
+    if (!file || !onImageChange) return;
+    
+    try {
+      // Create a preview URL
+      const imageUrl = URL.createObjectURL(file);
+      
+      // Call the parent's onImageChange with the file and preview URL
+      onImageChange(file, index, imageUrl);
+    } catch (error) {
+      console.error('Error creating image preview:', error);
+    }
+  };
+
+  // Handle panel click
+  const handlePanelClick = (index) => {
+    if (onPanelClick) {
+      onPanelClick(index);
+    }
+  };
+
+  // Handle panel remove
+  const handlePanelRemove = (e, index) => {
+    e.stopPropagation();
+    if (onPanelRemove) {
+      onPanelRemove(index);
+    }
+  };
+
+  // Handle panel move
+  const handlePanelMove = (e, fromIndex, direction) => {
+    e.stopPropagation();
+    if (onPanelMove) {
+      onPanelMove(fromIndex, direction);
+    }
+  };
+
+  const renderPanelPreviews = () => {
+    if (!safeData.panels || !Array.isArray(safeData.panels)) return null;
+    
+    return safeData.panels.map((panel, index) => {
+      <div 
+        key={panel.id || index}
+        className={`panel-preview ${activePanelIndex === index ? 'active' : ''}`}
+        onClick={() => onPanelClick && onPanelClick(index)}
+      >
+        <div className="panel-actions">
+          <button 
+            className="btn-remove-panel" 
+            onClick={(e) => handlePanelRemove(e, index)}
+            disabled={safeData.panels.length <= 2}
+            title={safeData.panels.length <= 2 ? 'At least 2 panels required' : 'Remove panel'}
+          >
+            <i className="fas fa-times"></i>
+          </button>
+          <button 
+            className="btn-move-up" 
+            onClick={(e) => handlePanelMove(e, index, 'up')}
+            disabled={index === 0}
+            title="Move up"
+          >
+            <i className="fas fa-arrow-up"></i>
+          </button>
+          <button 
+            className="btn-move-down" 
+            onClick={(e) => handlePanelMove(e, index, 'down')}
+            disabled={index === safeData.panels.length - 1}
+            title="Move down"
+          >
+            <i className="fas fa-arrow-down"></i>
+          </button>
+        </div>
+        
+        <div className="panel-preview-content">
+          {panel.image ? (
+            <div className="image-container">
+              <img 
+                src={panel.image} 
+                alt={`Panel ${index + 1}`} 
+                className="panel-preview-image"
+              />
+              <div className="image-overlay">
+                <button 
+                  className="btn-replace"
+                  onClick={(e) => triggerFileInput(e, index)}
+                >
+                  <i className="fas fa-sync-alt"></i> Replace Image
+                </button>
+              </div>
+              <div className="dimension-info">
+                Min: {minDimensions.width}×{minDimensions.height}px
+              </div>
+            </div>
+          ) : (
+            <div 
+              className="panel-preview-placeholder"
+              onClick={(e) => triggerFileInput(e, index)}
+            >
+              <i className="fas fa-image"></i>
+              <div>Click to add image</div>
+              <div className="dimension-hint">
+                Min: {minDimensions.width}×{minDimensions.height}px
+      </div>
+      
+      <div className="panel-preview-content">
+        {panel.image ? (
+          <div className="image-container">
+            <img 
+              src={panel.image} 
+              alt={`Panel ${index + 1}`} 
+              className="panel-preview-image"
+            />
+            <div className="image-overlay">
+              <button 
+                className="btn-replace"
+                onClick={(e) => triggerFileInput(e, index)}
+              >
+                <i className="fas fa-sync-alt"></i> Replace Image
+              </button>
+            </div>
+            <div className="dimension-info">
+              Min: {minDimensions.width}×{minDimensions.height}px
+            </div>
+          </div>
+        ) : (
+          <div 
+            className="panel-preview-placeholder"
+            onClick={(e) => triggerFileInput(e, index)}
+          >
+            <i className="fas fa-image"></i>
+            <div>Click to add image</div>
+            <div className="dimension-hint">
+              Min: {minDimensions.width}×{minDimensions.height}px
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  ));
+};
+
+const renderSlide = (panel, index) => {
+  if (!panel) return null;
+  
+  const imageUrl = getImageUrl(panel, index);
+  const isActive = index === activeIndex;
+  const hasImage = !!imageUrl;
+  
+  // Skip rendering if no image in preview mode
+  if (previewMode && !hasImage) {
+    return null;
+  }
+  
+  return (
+    <div 
+      key={`slide-${panel.id || index}`}
+      className={`carousel-slide ${isActive ? 'active' : ''}`}
+      style={{
+        backgroundImage: hasImage ? `url(${imageUrl})` : 'none',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundColor: !hasImage ? '#f5f5f5' : 'transparent',
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: hasImage || !previewMode ? 'block' : 'none'
+      }}
+      aria-label={`Slide ${index + 1}`}
+    >
+      {hasImage && (
+        <img 
+          src={imageUrl} 
+          alt={panel.headline || `Slide ${index + 1}`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: 'block'
+          }}
+          onError={(e) => {
+            e.target.style.display = 'none';
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// Get image URL for the current panel
+const getImageUrl = (panel, index) => {
+  if (!panel) return '';
+  
+  // Check if panel has an image property
+  if (panel.image) {
+    // If image is a string, return it directly
+    if (typeof panel.image === 'string') return panel.image;
+    
+    // If image is an object with url property, return the url
+    if (panel.image.url) return panel.image.url;
+    
+    // Handle case where image is an object but doesn't have url property
+    return '';
+  }
+  
+  // Check previewImageUrls as fallback
+  const panelId = panel.id || `panel-${index}`;
+  if (previewImageUrls && previewImageUrls[panelId]) {
+    return previewImageUrls[panelId];
+  }
+  
+  // No image found
+  return '';
+};
+
+// Ensure we only render if we have valid carousel data
+if (!data || !data.panels || data.panels.length === 0) {
+  return (
+    <div className="empty-carousel">
+      <i className="fas fa-images"></i>
+      <p>No panels added to carousel</p>
+    </div>
+  );
+}
+
+const currentPanel = safeData.panels[activeIndex] || {};
+const imageUrl = getImageUrl(currentPanel, activeIndex);
+
+return (
+  <div className={`premium-navigation-carousel ${mode} ${previewMode ? 'preview-mode' : ''}`}
+    onMouseEnter={() => setIsHovered(true)}
+    onMouseLeave={() => setIsHovered(false)}
+    onTouchStart={handleTouchStart}
+    onTouchMove={handleTouchMove}
+    onTouchEnd={handleTouchEnd}
+  >
+    
+    <div className="carousel-container">
+      <div className="carousel-slide">
+        {imageUrl ? (
+          <img 
+            src={imageUrl}
+            alt={currentPanel.headline || `Panel ${activeIndex + 1}`}
+            className="carousel-image"
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.style.display = 'none';
+              const originalUrl = typeof currentPanel.image === 'string' 
+                ? currentPanel.image 
+                : currentPanel.image?.url;
+    // Check if panel has an image property
+    if (panel.image) {
+      // If image is a string, return it directly
+      if (typeof panel.image === 'string') return panel.image;
+      
+      // If image is an object with url property, return the url
+      if (panel.image.url) return panel.image.url;
+      
+      // Handle case where image is an object but doesn't have url property
+      return '';
+    }
+    
+    // Check previewImageUrls as fallback
+    const panelId = panel.id || `panel-${index}`;
+    if (previewImageUrls && previewImageUrls[panelId]) {
+      return previewImageUrls[panelId];
+    }
+    
+    // No image found
+    return '';
+  };
+
+  // Ensure we only render if we have valid carousel data
+  if (!data || !data.panels || data.panels.length === 0) {
+    return (
+      <div className="empty-carousel">
+        <i className="fas fa-images"></i>
+        <p>No panels added to carousel</p>
+      </div>
+    );
+  }
+
+  const currentPanel = safeData.panels[activeIndex] || {};
+  const imageUrl = getImageUrl(currentPanel, activeIndex);
+
+  return (
+    <div className={`premium-navigation-carousel ${mode} ${previewMode ? 'preview-mode' : ''}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}>
+      
+      <div className="carousel-container">
+        <div className="carousel-slide">
+          {imageUrl ? (
+            <img 
+              src={imageUrl}
+              alt={currentPanel.headline || `Panel ${activeIndex + 1}`}
+              className="carousel-image"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.style.display = 'none';
+                const originalUrl = typeof currentPanel.image === 'string' 
+                  ? currentPanel.image 
+                  : currentPanel.image?.url;
+                
+                if (originalUrl && originalUrl !== e.target.src) {
+                  e.target.src = originalUrl;
+                  e.target.style.display = 'block';
+                }
+              }}
+            />
+          ) : (
+            <div className="no-image">
+              <i className="fas fa-image"></i>
+              <span>No image</span>
+              <div className="dimension-hint">
+                Min: {minDimensions.width}×{minDimensions.height}px
+              </div>
+            </div>
+          )}
+
+          {/* Navigation Controls */}
+          {safeData.panels.length > 1 && (
+            <div className="carousel-controls">
+              <button 
+                className="carousel-control prev"
+                onClick={goToPrev}
+                aria-label="Previous slide"
+              >
+                <i className="fas fa-chevron-left"></i>
+              </button>
+              <button 
+                className="carousel-control next"
+                onClick={goToNext}
+                aria-label="Next slide"
+              >
+                <i className="fas fa-chevron-right"></i>
+              </button>
+              
+            </div>
+          )}
+
+          {/* Caption */}
+          {currentPanel.showCaption !== false && (
+            <div className="carousel-caption">
+              {currentPanel.subHeadline && (
+                <div className="sub-headline">{currentPanel.subHeadline}</div>
+              )}
+              {currentPanel.headline && (
+                <h2 className="headline">{currentPanel.headline}</h2>
+              )}
+              {currentPanel.body && (
+                <div 
+                  className="body-text"
+                  dangerouslySetInnerHTML={{ __html: currentPanel.body }}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PremiumNavigationCarouselPreview;
+
